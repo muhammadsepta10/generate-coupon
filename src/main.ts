@@ -1,0 +1,63 @@
+import {HttpAdapterHost, NestApplication, NestFactory} from '@nestjs/core';
+import {AppModule} from './app.module';
+import {ConfigService} from "@nestjs/config";
+import {SwaggerModule, DocumentBuilder} from '@nestjs/swagger';
+import * as express from "express"
+import {Queue} from 'bull';
+import {createBullBoard} from "bull-board"
+import {BullAdapter} from "bull-board/bullAdapter"
+import * as expressWinston from "express-winston"
+import * as winston from 'winston';
+import {AllExceptionsFilter} from '@common/filter/exception.filter';
+import transports from "@common/logs/transports.log"
+import {AppConfigService} from '@common/config/app-config/app-config.service';
+
+
+async function bootstrap() {
+  const app: NestApplication = await NestFactory.create(AppModule);
+  const configService = app.get(AppConfigService);
+  const port = configService.PORT
+  let adapters: BullAdapter[] = []
+  let queues = []
+  for (let index = 0; index < queues.length; index++) {
+    const queue = queues[index]
+    const adapter = new BullAdapter(app.get<Queue>(`BullQueue_${queue}`))
+    adapters.push(adapter)
+  }
+  const {router: bullRouter} = createBullBoard(adapters)
+  app.use(
+    `/admin/queues`,
+    bullRouter
+  )
+  const config = new DocumentBuilder()
+    .addSecurity("authentication", {name: "authentication", type: "apiKey", in: "header"})
+    .setTitle('Carnation API')
+    .setVersion('1.0')
+    .addTag('CARNATION')
+    .setContact("REDBOX", "https://redboxdigital.id/", "redbox@missiidea.com")
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs/LL4KC0LNU', app, document);
+  app.enableCors();
+  // app.use(helmet())
+  app.use(express.json({limit: 50000000}));
+  app.use(expressWinston.logger({
+    format: winston.format.combine(
+      winston.format.timestamp({
+        format: "DD-MM-YYYY HH:mm:ss",
+      }),
+      winston.format.json()
+    ),
+    meta: true,
+    responseWhitelist: [...expressWinston.responseWhitelist, 'body'],
+    requestWhitelist: ['body', 'query', 'params', 'method', 'originalUrl', 'headers.x-forwarded-for', 'connection.remoteAddress'],
+    transports: process.env.NODE_ENV == "development" ? [transports.console] : [transports.combine]
+  })
+  )
+  const httpAdapterHost = app.get(HttpAdapterHost)
+  app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost));
+  await app.listen(port).then((v) => {
+    console.log("RUNNING ON PORT ", port)
+  })
+}
+bootstrap();
