@@ -14,6 +14,7 @@ export class CouponController {
 
     @Post("/generate")
     generate(@Body() params: generateCouponDTO) {
+        // console.log("params", params)
         return this.couponService.generateCoupon(params)
     }
 }

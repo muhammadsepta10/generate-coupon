@@ -138,8 +138,6 @@ export class CouponService {
                 const isAlpha = code.replace(config.prefix, "").replace(config.postfix, "").search(/.*([a-zA-Z]).*/) < 0 ? false : true
                 const alphanumCheck = config.type === "alpha" ? isAlpha : config.type === "numeric" ? isNumeric : (isNumeric && isAlpha)
                 const checkCode = await this.couponModels.Coupons.Coupons.findOne({coupon: code})
-                console.log("checkCode", checkCode, codes[code] === undefined, alphanumCheck)
-                console.log("code", code)
                 if (!checkCode && codes[code] === undefined && alphanumCheck) {
                     // first[firstCode] ? first[firstCode] += 1 : first[firstCode] = 1
                     // scnd[scndCode] ? scnd[scndCode] += 1 : scnd[scndCode] = 1
@@ -216,15 +214,15 @@ export class CouponService {
             const sliceArr: {coupon: string, project: string}[] = arrCode.slice(lastIdx, (counInsert + lastIdx)).map(v => {return {coupon: v, project: config.project}})
             const sliceArrCoupon: string[] = arrCode.slice(lastIdx, (counInsert + lastIdx)).map(v => {return v})
             await this.couponModels.Coupons.Coupons.insertMany(sliceArr)
-            await this._writeCsv(sliceArrCoupon, config.project)
+            await this._writeCsv(sliceArrCoupon, config.project, config.prefix, config.postfix)
             lastIdx += counInsert
         }
         return true
     }
 
-    _writeCsv(data: any[], project: string) {
-        let originName = project
-        let name = ""
+    _writeCsv(data: any[], project: string, prefix: string, postfix: string) {
+        let originName = prefix !== "" ? prefix : postfix !== "" ? postfix : project
+        let name = originName
         const dirPath = `${appRootPath}/../public/coupons/csv/${project}`
         if (!fs.existsSync(dirPath)) {
             fs.mkdirSync(dirPath, {recursive: true})
