@@ -18,7 +18,7 @@ async function bootstrap() {
   const configService = app.get(AppConfigService);
   const port = configService.PORT
   let adapters: BullAdapter[] = []
-  let queues = []
+  let queues = ["coupon"]
   for (let index = 0; index < queues.length; index++) {
     const queue = queues[index]
     const adapter = new BullAdapter(app.get<Queue>(`BullQueue_${queue}`))

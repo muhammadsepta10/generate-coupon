@@ -6,11 +6,25 @@ import {CouponDbConfigModule} from './common/config/database-config/coupon-db-co
 import {MainDbModule} from './datasource/database/mysql/main-db/main-db.module';
 import {CouponDbModule} from './datasource/database/mongo/coupon/coupon-db.module';
 import {AppConfigModule} from '@common/config/app-config/app-config.module';
-import { CouponModule } from './api/coupon/coupon.module';
+import {CouponModule} from './api/coupon/coupon.module';
+import {BullModule} from '@nestjs/bull';
 
 
 @Module({
-  imports: [AppConfigModule, HelperModule, CouponDbConfigModule, MainDbModule, CouponDbModule, CouponModule],
+  imports: [
+    AppConfigModule,
+    HelperModule,
+    CouponDbConfigModule,
+    MainDbModule,
+    CouponDbModule,
+    CouponModule,
+    BullModule.forRoot({
+      redis: {
+        host: 'localhost',
+        port: 6379,
+      },
+    })
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

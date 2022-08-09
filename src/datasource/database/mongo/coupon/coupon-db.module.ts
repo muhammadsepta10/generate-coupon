@@ -5,7 +5,8 @@ import {CouponDbService} from './coupon-db.service';
 import {baseModelProviders} from './models/model.base.providers';
 
 @Module({
-  imports: [CouponDbConfigModule],
+  imports: [CouponDbConfigModule
+  ],
   providers: [CouponDbService, CouponDbService, ...baseModelProviders, ...databaseProviders],
   exports: [CouponDbService, ...baseModelProviders, ...databaseProviders]
 
