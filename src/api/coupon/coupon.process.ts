@@ -11,6 +11,7 @@ import appRootPath from "app-root-path"
 import {Process, Processor} from '@nestjs/bull';
 import {Job} from 'bull';
 let idx = 0
+import * as moment from "moment"
 
 @Processor('coupon')
 export class CouponProcess {
@@ -349,6 +350,8 @@ export class CouponProcess2 {
         const limitRowPerLoop = 100000
         const totalLoop = Math.ceil(count / limitRowPerLoop)
         let totalLoopIdx = 0
+        let codeGenerated = 0
+        const startDate = moment().format("YYYY-MM-DD YYYY-MM-DD HH:mm:ss")
         while (totalLoopIdx < totalLoop) {
             let validCode = 0
             let codes: any = {}
@@ -361,8 +364,9 @@ export class CouponProcess2 {
                 const checkCode = await this.couponModels.Coupons.Coupons.findOne({coupon: code})
                 if (!checkCode && codes[code] === undefined && alphanumCheck) {
                     countCoupon--;
+                    codeGenerated++
                     codes[code] = true
-                    console.log("code generate", countCoupon - countCoupon, code, firstTypeChar)
+                    console.log("code generate", ` || totalLoop = ${totalLoop} `, ` || loop ${totalLoopIdx + 1}`, ` || totalGenerate ${codeGenerated}`, code, ` || TOTAL TIME = ${moment(startDate, "YYYY-MM-DD HH:mm:ss").fromNow()}`)
                 }
             }
 
@@ -376,11 +380,12 @@ export class CouponProcess2 {
                 const checkCode = this._checkCodeV4(code || "", codeBfr || "", codeAftr || "")
                 if (!checkCode) {
                     delete codes[code]
+                    codeGenerated--
                     countCoupon++
                 }
+                codeGenerated--
                 countLoop++
             }
-            console.log(countCoupon - countCoupon, countCoupon)
             if (countCoupon < 1) {
                 validCode = 1
             }
@@ -397,7 +402,6 @@ export class CouponProcess2 {
                 await this._writeCsv(sliceArrCoupon, project, prefix, postfix)
                 lastIdx += counInsert
             }
-
             totalLoopIdx++
         }
 
