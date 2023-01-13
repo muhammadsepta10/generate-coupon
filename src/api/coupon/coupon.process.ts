@@ -189,8 +189,8 @@ export class CouponProcess {
             //         countLoop++
             //     }
             // }
-            const sortedCode = Object.keys(codes)
             // for (let index = 0; index < sortedCode.length / counInsert; index++) {
+            const sortedCode = Object.keys(codes)
             let countLoop = 0
             while (countLoop < sortedCode.length) {
                 const code = sortedCode[countLoop]
@@ -245,5 +245,161 @@ export class CouponProcess {
             }
         })
         return true
+    }
+}
+
+@Processor("coupon2")
+export class CouponProcess2 {
+    private couponModels: DBModel
+    constructor(
+        private readonly couponDbService: CouponDbService
+    ) {
+        this.couponModels = this.couponDbService.getModels()
+    }
+
+    _randomInt(min: number, max: number) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    _randomElem(arr: string) {
+        return arr[this._randomInt(0, arr.length - 1)];
+    }
+
+
+    _generateOne(charset: string, postfix: string, prefix: string, length: number) {
+        let code = ""
+        let typeChar = 3
+        let firstChar = ""
+        let type = 0
+        while ((length - prefix.length) > 0) {
+            let char = this._randomElem(charset)
+            const charIsExist = code.includes(char)
+            if (!charIsExist) {
+                code += char
+                length--
+            }
+        }
+        return prefix + code + postfix;
+
+    }
+
+    _checkCodeV4(code: string, codeBfr: string, codeAftr: string) {
+        const codeFirst = code.substring(1, 3)
+        const codeLast = code.substring(5, 7)
+        const codeBfrFirst = codeBfr.substring(0, 2)
+        const codeBfrLast = codeBfr.substring(5, 7)
+        const codeAftrFirst = codeAftr.substring(0, 2)
+        const codeAftrLast = codeAftr.substring(5, 7)
+        if (codeFirst[0] === (codeBfrFirst?.[0] || "") && codeLast[0] === (codeBfrLast?.[0] || "")) {
+            const codeLastIdx = alphanumericArr.indexOf(codeLast[1])
+            const codeBfrLastIdx = alphanumericArr.indexOf(codeBfrLast[1])
+            const checkIdxLast = codeLastIdx - codeBfrLastIdx
+            if ((codeFirst[1] === (codeBfrFirst?.[1] || "")) && (checkIdxLast < 0 ? checkIdxLast * -1 : checkIdxLast) < 10) {
+                const codeFirstIdx = alphanumericArr.indexOf(codeFirst[1])
+                const codeBfrFirstIdx = alphanumericArr.indexOf(codeBfrFirst[1])
+                const checkIdx = codeFirstIdx - codeBfrFirstIdx
+                if ((checkIdx < 0 ? checkIdx * -1 : checkIdx) < 10) {
+                    return false
+                }
+            }
+        }
+        if (codeFirst[0] === (codeAftrFirst?.[0] || "") && codeLast[0] === (codeAftrLast?.[0] || "")) {
+            const codeLastIdx = alphanumericArr.indexOf(codeLast[1])
+            const codeAftrLastIdx = alphanumericArr.indexOf(codeAftrLast[1])
+            const checkIdxLast = codeLastIdx - codeAftrLastIdx
+            if ((codeFirst[1] === (codeAftrFirst?.[1] || "")) && (checkIdxLast < 0 ? checkIdxLast * -1 : checkIdxLast) < 10) {
+                const codeFirstIdx = alphanumericArr.indexOf(codeFirst[1])
+                const codeAftrFirstIdx = alphanumericArr.indexOf(codeAftrFirst[1])
+                const checkIdx = codeFirstIdx - codeAftrFirstIdx
+                if ((checkIdx < 0 ? checkIdx * -1 : checkIdx) < 10) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+
+    _writeCsv(data: any[], project: string, prefix: string, postfix: string) {
+        let originName = prefix !== "" ? prefix : postfix !== "" ? postfix : project
+        let name = originName
+        const dirPath = `${appRootPath}/../public/coupons/csv/${project}`
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, {recursive: true})
+        }
+        while (fs.existsSync(`${dirPath}/${name}.csv`)) {
+            name = originName
+            name = `${name}-${idx}`
+            idx++
+        }
+        data.unshift("coupon")
+        fs.writeFile(`${dirPath}/${name}.csv`, data.join("\r\n"), (err) => {
+            if (err) {
+                console.log("error create", err)
+            } else {
+                console.log("Success create")
+            }
+        })
+        return true
+    }
+
+    @Process()
+    async generateCoupon(job: Job<generateCouponDTO>) {
+        let {lengths, count, project, type, char, postfix, prefix} = job.data
+        const limitRowPerLoop = 100000
+        const totalLoop = Math.ceil(count / limitRowPerLoop)
+        let totalLoopIdx = 0
+        while (totalLoopIdx < totalLoop) {
+            let validCode = 0
+            let codes: any = {}
+            let countCoupon = totalLoopIdx + 1 < totalLoop ? limitRowPerLoop : count % limitRowPerLoop
+            while (countCoupon > 0) {
+                let code = this._generateOne(char, postfix, prefix, lengths);
+                const isNumeric = code.replace(prefix, "").replace(postfix, "").search(/.*([0-9]).*/) < 0 ? false : true
+                const isAlpha = code.replace(prefix, "").replace(postfix, "").search(/.*([a-zA-Z]).*/) < 0 ? false : true
+                const alphanumCheck = type === "alpha" ? isAlpha : type === "numeric" ? isNumeric : (isNumeric && isAlpha)
+                const checkCode = await this.couponModels.Coupons.Coupons.findOne({coupon: code})
+                if (!checkCode && codes[code] === undefined && alphanumCheck) {
+                    countCoupon--;
+                    codes[code] = true
+                    console.log("code generate", countCoupon - countCoupon, code, firstTypeChar)
+                }
+            }
+
+
+            const sortedCode = Object.keys(codes).sort()
+            let countLoop = 0
+            while (countLoop < sortedCode.length) {
+                const code = sortedCode[countLoop]
+                const codeBfr = sortedCode[countLoop - 1]
+                const codeAftr = sortedCode[countLoop + 1]
+                const checkCode = this._checkCodeV4(code || "", codeBfr || "", codeAftr || "")
+                if (!checkCode) {
+                    delete codes[code]
+                    countCoupon++
+                }
+                countLoop++
+            }
+            console.log(countCoupon - countCoupon, countCoupon)
+            if (countCoupon < 1) {
+                validCode = 1
+            }
+
+
+            const arrCode = Object.keys(codes)
+            let lastIdx = 0
+            const counInsert = 100000
+            for (let index = 0; index < arrCode.length / counInsert; index++) {
+                console.log("insert loop->", index + 1)
+                const sliceArr: {coupon: string, project: string}[] = arrCode.slice(lastIdx, (counInsert + lastIdx)).map(v => {return {coupon: v, project}})
+                const sliceArrCoupon: string[] = arrCode.slice(lastIdx, (counInsert + lastIdx)).map(v => {return v})
+                await this.couponModels.Coupons.Coupons.insertMany(sliceArr)
+                await this._writeCsv(sliceArrCoupon, project, prefix, postfix)
+                lastIdx += counInsert
+            }
+
+            totalLoopIdx++
+        }
+
     }
 }

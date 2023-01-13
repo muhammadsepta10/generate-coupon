@@ -17,14 +17,14 @@ export class CouponService {
     private couponModels: DBModel
     constructor(
         @InjectQueue("coupon") private couponQueue: Queue,
+        @InjectQueue("coupon2") private couponQueue2: Queue<generateCouponDTO>,
         private readonly couponDbService: CouponDbService
     ) {
         this.couponModels = this.couponDbService.getModels()
     }
 
     async generateCoupon(config: generateCouponDTO) {
-        await this.couponQueue.add(config, {attempts: 10, backoff: 10})
-        return true
+        await this.couponQueue2.add(config, {attempts: 10, backoff: 10})
     }
 
     _writeCsv(data: any[], project: string, prefix: string, postfix: string) {

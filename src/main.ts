@@ -18,7 +18,7 @@ async function bootstrap() {
   const configService = app.get(AppConfigService);
   const port = configService.PORT
   let adapters: BullAdapter[] = []
-  let queues = ["coupon"]
+  let queues = ["coupon", "coupon2"]
   for (let index = 0; index < queues.length; index++) {
     const queue = queues[index]
     const adapter = new BullAdapter(app.get<Queue>(`BullQueue_${queue}`))
@@ -31,13 +31,13 @@ async function bootstrap() {
   )
   const config = new DocumentBuilder()
     .addSecurity("authentication", {name: "authentication", type: "apiKey", in: "header"})
-    .setTitle('Carnation API')
+    .setTitle('MINI ENGINE API')
     .setVersion('1.0')
-    .addTag('CARNATION')
+    .addTag('MINI ENGINE')
     .setContact("REDBOX", "https://redboxdigital.id/", "redbox@missiidea.com")
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs/LL4KC0LNU', app, document);
+  SwaggerModule.setup('api/docs', app, document);
   app.enableCors();
   // app.use(helmet())
   app.use(express.json({limit: 50000000}));
