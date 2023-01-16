@@ -347,7 +347,7 @@ export class CouponProcess2 {
     @Process()
     async generateCoupon(job: Job<generateCouponDTO>) {
         let {lengths, count, project, type, char, postfix, prefix} = job.data
-        const limitRowPerLoop = 100000
+        const limitRowPerLoop = 1000000
         const totalLoop = Math.ceil(count / limitRowPerLoop)
         let totalLoopIdx = 0
         let codeGenerated = 0
