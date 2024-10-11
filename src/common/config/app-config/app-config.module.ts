@@ -1,13 +1,16 @@
-import {Module} from '@nestjs/common';
-import {AppConfigService} from './app-config.service';
-import {ConfigModule, ConfigService} from '@nestjs/config';
-import configuration from "./index"
-import * as Joi from "joi"
+import { Module } from "@nestjs/common";
+import { AppConfigService } from "./app-config.service";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import configuration from "./index";
+import * as Joi from "joi";
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFilePath: process.env.NODE_ENV === 'production' ? '.env' : `.env.${process.env.NODE_ENV}`,
+      envFilePath:
+        process.env.NODE_ENV === "production"
+          ? ".env"
+          : `.env.${process.env.NODE_ENV}`,
       load: [configuration],
       validationSchema: Joi.object({
         ENV: Joi.string(),
@@ -31,11 +34,12 @@ import * as Joi from "joi"
         MAIL_PORT: Joi.string(),
         MAIL_USER: Joi.string(),
         MAIL_PASS: Joi.string(),
-        HP_WA: Joi.string()
+        HP_WA: Joi.string(),
+        BASE_URL: Joi.string(),
       }),
     }),
   ],
   providers: [ConfigService, AppConfigService],
-  exports: [ConfigService, AppConfigService]
+  exports: [ConfigService, AppConfigService],
 })
 export class AppConfigModule {}
