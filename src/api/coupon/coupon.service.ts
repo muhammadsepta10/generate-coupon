@@ -6,6 +6,7 @@ import {
   GenerateBulkQr,
   generateCouponDTO,
   postProcessImageBulkDTO,
+  PostProcessQrDTO,
   PostProcessQrPerFileDTO,
   SplitCsvAndQrDTO,
 } from "./coupon.dto";
@@ -65,6 +66,8 @@ export class CouponService {
     @InjectQueue("bulk-qr") private bulkQrQueue: Queue<GenerateBulkQr>,
     @InjectQueue("post-process-qr")
     private postProcessQrQueue: Queue<PostProcessQrPerFileDTO>,
+    @InjectQueue("merge-image")
+    private mergeImageQrQueue: Queue<PostProcessQrDTO>,
     private readonly couponDbService: CouponDbService,
   ) {
     this.couponModels = this.couponDbService.getModels();
@@ -168,15 +171,16 @@ export class CouponService {
       lodash.sortBy(csvFile),
       lodash.sortBy(qrFiles),
     );
-    console.log("compare", compare);
   }
 
-  async postProcessQrPerFile(param: PostProcessQrPerFileDTO) {
-    await this.postProcessQrQueue.add(param);
+  async postProcessQrPerFile(param: PostProcessQrDTO) {
+    const job = await this.mergeImageQrQueue.add(param);
+    const result = await job.finished();
+    return result;
   }
 
   async postProcessImageBulk(param: postProcessImageBulkDTO) {
-    const { projectPath } = param;
+    const { projectPath, overlayImage, text } = param;
     const projectFullPath = resolve(`${appRootPath}/../${projectPath}`);
     const batchFiles = fs
       .readdirSync(projectFullPath)
@@ -196,6 +200,8 @@ export class CouponService {
               qrPath: `${projectPath}${batchFiles[index]}/qr/${v}`,
               qrTargetPath: `${qrTargetPath}/${v}`,
               backgroundPath,
+              overlayImage,
+              text,
             },
           };
         });

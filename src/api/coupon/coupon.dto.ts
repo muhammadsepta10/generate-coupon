@@ -19,35 +19,81 @@ export class generateCouponDTO {
   type: "alpha" | "numeric" | "alphanumeric";
 }
 
+export class BaseImageMergeDTO {
+  @ApiProperty()
+  width?: number;
+  @ApiProperty()
+  height?: number;
+  @ApiProperty()
+  path: string;
+}
+
+export class OverlayImageMergeDTO {
+  @ApiProperty()
+  path: string;
+  @ApiProperty()
+  width?: number;
+  @ApiProperty()
+  height?: number;
+  @ApiProperty()
+  x: number;
+  @ApiProperty()
+  y: number;
+  @ApiProperty()
+  topRadius?: number;
+}
+
+export class TextMergeDTO {
+  @ApiProperty()
+  value: string;
+  @ApiProperty()
+  size: number;
+  @ApiProperty()
+  fontFamily: string;
+  @ApiProperty()
+  color: string;
+  @ApiProperty()
+  x: number;
+  @ApiProperty()
+  y: number;
+}
+
 export class PostProcessQrDTO {
-  baseImage: {
-    width?: number;
-    height?: number;
-    path: string;
-  };
-  overlayImage: {
-    path: string;
-    width?: number;
-    height?: number;
-    x: number;
-    y: number;
-    topRadius?: number;
-  };
-  text: {
-    value: string;
-    size: number;
-    fontFamily: string;
-    color: string;
-    x: number;
-    y: number;
-  };
+  @ApiProperty({ type: BaseImageMergeDTO })
+  baseImage: BaseImageMergeDTO;
+  @ApiProperty({ type: OverlayImageMergeDTO })
+  overlayImage: OverlayImageMergeDTO;
+  @ApiProperty({ type: TextMergeDTO })
+  text: TextMergeDTO;
+  @ApiProperty()
   pathSave: string;
+  @ApiProperty()
   filename: string;
+}
+
+export class overLayImageDTO {
+  x: number;
+  y: number;
+  height: number;
+  width: number;
+  topRadius: number;
+}
+
+export class TextDTO {
+  color: string;
+  fontFamily: string;
+  size: number;
+  x: number;
+  y: number;
 }
 
 export class postProcessImageBulkDTO {
   @ApiProperty()
   projectPath: string;
+  @ApiProperty({ type: overLayImageDTO })
+  overlayImage: overLayImageDTO;
+  @ApiProperty({ type: TextDTO })
+  text: TextDTO;
 }
 
 export class PostProcessQrPerFileDTO {
@@ -57,6 +103,10 @@ export class PostProcessQrPerFileDTO {
   qrTargetPath: string;
   @ApiProperty()
   backgroundPath: string;
+  @ApiProperty({ type: overLayImageDTO })
+  overlayImage: overLayImageDTO;
+  @ApiProperty({ type: TextDTO })
+  text: TextDTO;
 }
 
 export class compareCsvAndQrDTO {

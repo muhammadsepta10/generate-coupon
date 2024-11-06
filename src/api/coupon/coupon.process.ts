@@ -698,15 +698,20 @@ export class MergeImage {
 
   @Process({ concurrency: 50 })
   async mergeImage(job: Job<PostProcessQrDTO>) {
-    const options = job.data;
-    if (
-      !fs.existsSync(
-        resolve(`${appRoot}/../${options.pathSave}/${options.filename}`),
-      )
-    ) {
-      await this.helperService.mergeImage(options);
-      generated++;
-      console.log("generated post process qr", generated);
+    try {
+      const options = job.data;
+      if (
+        !fs.existsSync(
+          resolve(`${appRoot}/../${options.pathSave}/${options.filename}`),
+        )
+      ) {
+        const result = await this.helperService.mergeImage(options);
+        generated++;
+        console.log("generated post process qr", generated);
+        return result;
+      }
+    } catch (error) {
+      throw new Error(error);
     }
   }
 }

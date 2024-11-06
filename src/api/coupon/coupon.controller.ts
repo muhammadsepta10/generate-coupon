@@ -14,6 +14,7 @@ import {
   GenerateBulkQr,
   generateCouponDTO,
   postProcessImageBulkDTO,
+  PostProcessQrDTO,
   PostProcessQrPerFileDTO,
   SplitCsvAndQrDTO,
 } from "./coupon.dto";
@@ -36,7 +37,7 @@ export class CouponController {
   }
 
   @Post("/post-test")
-  postProcessTest(@Body() param: PostProcessQrPerFileDTO) {
+  postProcessTest(@Body() param: PostProcessQrDTO) {
     return this.couponService.postProcessQrPerFile(param);
   }
 
