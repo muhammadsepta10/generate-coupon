@@ -72,18 +72,28 @@ export class PostProcessQrDTO {
 }
 
 export class overLayImageDTO {
+  @ApiProperty()
   x: number;
+  @ApiProperty()
   y: number;
+  @ApiProperty()
   height: number;
+  @ApiProperty()
   width: number;
+  @ApiProperty()
   topRadius: number;
 }
 
 export class TextDTO {
+  @ApiProperty()
   color: string;
+  @ApiProperty()
   fontFamily: string;
+  @ApiProperty()
   size: number;
+  @ApiProperty()
   x: number;
+  @ApiProperty()
   y: number;
 }
 

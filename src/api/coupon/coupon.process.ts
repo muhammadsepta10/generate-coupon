@@ -724,7 +724,7 @@ export class PostProcessQr {
   ) {}
   @Process({ concurrency: 10 })
   async postProccessQr(job: Job<PostProcessQrPerFileDTO>) {
-    let { backgroundPath, qrPath, qrTargetPath } = job.data;
+    let { backgroundPath, qrPath, qrTargetPath, overlayImage, text } = job.data;
     const basePath = resolve(`${appRoot}/..`);
     // const baseImagePath = resolve(`${basePath}/${backgroundPath}`);
     const qrImagePath = resolve(`${basePath}/${qrPath}`);
@@ -748,20 +748,20 @@ export class PostProcessQr {
         filename: `${filename}.png`,
         overlayImage: {
           path: overlayPath,
-          x: 85,
-          y: 85,
-          height: 180,
-          width: 180,
-          topRadius: 0,
+          x: overlayImage.x,
+          y: overlayImage.y,
+          height: overlayImage.height,
+          width: overlayImage.width,
+          topRadius: overlayImage.topRadius,
         },
         pathSave: qrTargetPath,
         text: {
-          color: "white",
-          fontFamily: "Arial",
-          size: 20,
+          color: text.color,
+          fontFamily: text.fontFamily,
+          size: text.size,
           value: filename,
-          x: 165,
-          y: 305,
+          x: text.x,
+          y: text.y,
         },
       };
       // if (!fs.existsSync(qrTargetImagePath)) {
