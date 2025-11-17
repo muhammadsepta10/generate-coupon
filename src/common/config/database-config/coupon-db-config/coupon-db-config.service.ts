@@ -1,28 +1,27 @@
-import {Injectable} from '@nestjs/common';
-import {ConfigService} from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class CouponDbConfigService {
-    constructor(private configService: ConfigService) {
-    }
+  constructor(private configService: ConfigService) {}
 
-    get URL(): string {
-        return this.configService.get<string>("couponDB.URL")
-    }
+  get URL(): string {
+    return this.configService.get<string>('couponDB.URL');
+  }
 
-    get HOST(): string {
-        return this.configService.get<string>("couponDB.HOST")
-    }
+  get HOST(): string {
+    return this.configService.get<string>('couponDB.HOST');
+  }
 
-    get USER(): string {
-        return this.configService.get<string>("couponDB.USER")
-    }
+  get USER(): string {
+    return this.configService.get<string>('couponDB.USER');
+  }
 
-    get PASS(): string {
-        return this.configService.get<string>("couponDB.PASS")
-    }
+  get PASS(): string {
+    return this.configService.get<string>('couponDB.PASS');
+  }
 
-    get NAME(): string {
-        return this.configService.get<string>("couponDB.NAME")
-    }
+  get NAME(): string {
+    return this.configService.get<string>('couponDB.NAME');
+  }
 }

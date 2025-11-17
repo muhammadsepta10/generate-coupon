@@ -1,8 +1,8 @@
-import { HelperModule } from "@common/helper/helper.module";
-import { CouponDbModule } from "@database/database/mongo/coupon/coupon-db.module";
-import { BullModule } from "@nestjs/bull";
-import { Module } from "@nestjs/common";
-import { CouponController } from "./coupon.controller";
+import { HelperModule } from '@common/helper/helper.module';
+import { CouponDbModule } from '@database/database/mongo/coupon/coupon-db.module';
+import { BullModule } from '@nestjs/bull';
+import { Module } from '@nestjs/common';
+import { CouponController } from './coupon.controller';
 import {
   BulkQr,
   CouponProcess,
@@ -10,30 +10,30 @@ import {
   GenerateQr,
   MergeImage,
   PostProcessQr,
-} from "./coupon.process";
-import { CouponService } from "./coupon.service";
+} from './coupon.process';
+import { CouponService } from './coupon.service';
 
 @Module({
   imports: [
     CouponDbModule,
     HelperModule,
     BullModule.registerQueue({
-      name: "coupon",
+      name: 'coupon',
     }),
     BullModule.registerQueue({
-      name: "coupon2",
+      name: 'coupon2',
     }),
     BullModule.registerQueue({
-      name: "bulk-qr",
+      name: 'bulk-qr',
     }),
     BullModule.registerQueue({
-      name: "generate-qr",
+      name: 'generate-qr',
     }),
     BullModule.registerQueue({
-      name: "merge-image",
+      name: 'merge-image',
     }),
     BullModule.registerQueue({
-      name: "post-process-qr",
+      name: 'post-process-qr',
     }),
   ],
   controllers: [CouponController],

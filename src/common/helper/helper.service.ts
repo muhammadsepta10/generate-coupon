@@ -1,14 +1,104 @@
-import { Injectable } from "@nestjs/common";
-import * as qrcode from "qrcode";
-import { path as appRoot } from "app-root-path";
-import { createWriteStream, existsSync, mkdirSync, writeFileSync } from "fs";
-import { CanvasRenderingContext2D, createCanvas, loadImage } from "canvas";
-import { join, resolve } from "path";
-import { AppConfigService } from "@common/config/app-config/app-config.service";
+import { Injectable } from '@nestjs/common';
+import * as qrcode from 'qrcode';
+import { path as appRoot } from 'app-root-path';
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { CanvasRenderingContext2D, createCanvas, loadImage } from 'canvas';
+import { join, resolve } from 'path';
+import { AppConfigService } from '@common/config/app-config/app-config.service';
 
 @Injectable()
 export class HelperService {
   constructor(private appConfig: AppConfigService) {}
+
+  private _resolvePath(pathInput: string) {
+    if (!pathInput) {
+      return null;
+    }
+    if (pathInput.startsWith('data:')) {
+      return pathInput;
+    }
+    if (existsSync(pathInput)) {
+      return pathInput;
+    }
+    const baseRoot = appRoot || process.cwd();
+    const normalized = pathInput.startsWith('/')
+      ? pathInput.slice(1)
+      : pathInput;
+    const candidate = resolve(baseRoot, normalized);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const appCandidate = resolve(`${appRoot}/${normalized}`);
+    if (existsSync(appCandidate)) {
+      return appCandidate;
+    }
+    return resolve(baseRoot, pathInput);
+  }
+
+  private async _composeMergeCanvas({
+    baseImage,
+    overlayImage,
+    text,
+  }: {
+    baseImage: {
+      width?: number;
+      height?: number;
+      path: string;
+    };
+    overlayImage: {
+      path: string;
+      width?: number;
+      height?: number;
+      x: number;
+      y: number;
+      topRadius?: number;
+    };
+    text: {
+      value: string;
+      size: number;
+      fontFamily: string;
+      color: string;
+      x: number;
+      y: number;
+    };
+  }) {
+    const baseImagePath = this._resolvePath(baseImage.path);
+    const overlayImagePath = this._resolvePath(overlayImage.path);
+    const baseImageLoad = await loadImage(baseImagePath);
+    const overlayImageLoad = await loadImage(overlayImagePath);
+
+    const canvas = createCanvas(baseImageLoad.width, baseImageLoad.height);
+    const ctx = canvas.getContext('2d');
+
+    ctx.drawImage(
+      baseImageLoad,
+      0,
+      0,
+      baseImageLoad.width,
+      baseImageLoad.height,
+    );
+
+    const overlayWidth = overlayImage.width;
+    const overlayHeight = overlayImage.height;
+    const overlayX = overlayImage.x;
+    const overlayY = overlayImage.y;
+
+    this._drawImageWithRoundedTopCorners(
+      ctx,
+      overlayImageLoad,
+      overlayX,
+      overlayY,
+      overlayWidth,
+      overlayHeight,
+      overlayImage.topRadius || 0,
+    );
+
+    ctx.font = `bold ${text.size}px ${text.fontFamily}`;
+    ctx.fillStyle = text.color;
+    ctx.fillText(text.value, text.x, text.y);
+
+    return canvas;
+  }
 
   async mergeImage({
     baseImage,
@@ -41,60 +131,55 @@ export class HelperService {
     pathSave: string;
     filename: string;
   }) {
-    const basePath = `${appRoot}/../`;
-    const baseImagePath = resolve(`${basePath}/${baseImage.path}`);
-    const overlayImagePath = resolve(`${basePath}/${overlayImage.path}`);
-    const baseImageLoad = await loadImage(baseImagePath);
-    const overlayImageLoad = await loadImage(overlayImagePath);
-    pathSave = resolve(`${basePath}/${pathSave}`);
-    if (!existsSync(pathSave)) {
-      mkdirSync(pathSave, { recursive: true });
+    const baseRoot = `${appRoot}/../`;
+    const targetDir = resolve(`${baseRoot}/${pathSave}`);
+    if (!existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true });
     }
-    pathSave = resolve(`${pathSave}/${filename}`);
+    const canvas = await this._composeMergeCanvas({
+      baseImage,
+      overlayImage,
+      text,
+    });
+    const assetPath = resolve(`${targetDir}/${filename}`);
+    const buffer = canvas.toBuffer('image/png');
+    writeFileSync(assetPath, buffer);
+    return assetPath;
+  }
 
-    // create canvas
-    const canvas = createCanvas(baseImageLoad.width, baseImageLoad.height);
-    const ctx = canvas.getContext("2d");
-
-    // Draw base image
-    ctx.drawImage(
-      baseImageLoad,
-      0,
-      0,
-      baseImageLoad.width,
-      baseImageLoad.height,
-    );
-
-    // overlay option
-    const overlayWidth = overlayImage.width;
-    const overlayHeight = overlayImage.height;
-    const overlayX = overlayImage.x;
-    const overlayY = overlayImage.y;
-
-    this._drawImageWithRoundedTopCorners(
-      ctx,
-      overlayImageLoad,
-      overlayX,
-      overlayY,
-      overlayWidth,
-      overlayHeight,
-      overlayImage.topRadius || 0,
-    );
-    // ctx.drawImage(
-    //   overlayImageLoad,
-    //   overlayX,
-    //   overlayY,
-    //   overlayWidth,
-    //   overlayHeight,
-    // );
-
-    ctx.font = `bold ${text.size}px ${text.fontFamily}`;
-    ctx.fillStyle = text.color;
-    ctx.fillText(text.value, text.x, text.y);
-    // Save canvas image
-    const buffer = canvas.toBuffer("image/png");
-    writeFileSync(pathSave, buffer);
-    return pathSave;
+  async mergeImagePreview({
+    baseImage,
+    overlayImage,
+    text,
+  }: {
+    baseImage: {
+      width?: number;
+      height?: number;
+      path: string;
+    };
+    overlayImage: {
+      path: string;
+      width?: number;
+      height?: number;
+      x: number;
+      y: number;
+      topRadius?: number;
+    };
+    text: {
+      value: string;
+      size: number;
+      fontFamily: string;
+      color: string;
+      x: number;
+      y: number;
+    };
+  }) {
+    const canvas = await this._composeMergeCanvas({
+      baseImage,
+      overlayImage,
+      text,
+    });
+    return canvas.toDataURL('image/png');
   }
 
   private _drawImageWithRoundedTopCorners(
@@ -155,7 +240,7 @@ export class HelperService {
 
     ctx.beginPath();
     ctx.lineWidth = thickness;
-    ctx.lineCap = "round"; // Rounded line caps for smooth edges
+    ctx.lineCap = 'round'; // Rounded line caps for smooth edges
 
     for (let i = 0; i <= steps; i++) {
       const xx = x + (i * cellSize) / steps;
@@ -276,6 +361,100 @@ export class HelperService {
     ctx.fill();
   }
 
+  private async _renderQrCanvas({
+    content,
+    style,
+    colorRange,
+    icon,
+  }: {
+    content: string;
+    style:
+      | 'classic'
+      | 'rounded'
+      | 'wave'
+      | 'stain'
+      | 'batik'
+      | 'diamond'
+      | 'fluid';
+    colorRange: [string, string];
+    icon?: string;
+  }) {
+    const qrSize = 500;
+    const qrMargin = 10;
+    const qrCodeData = qrcode.create(content, { errorCorrectionLevel: 'H' });
+    const modules = qrCodeData.modules;
+    const moduleCount = modules.size;
+    const usableSize = qrSize - qrMargin * 2;
+    const cellSize = usableSize / moduleCount;
+    const canvas = createCanvas(qrSize, qrSize);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, qrSize, qrSize);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, qrSize, qrSize);
+
+    const colorStart = this._hexToRgb(colorRange[0]);
+    const colorEnd = this._hexToRgb(colorRange[1]);
+
+    for (let row = 0; row < moduleCount; row++) {
+      for (let col = 0; col < moduleCount; col++) {
+        if (!modules.get(row, col)) {
+          continue;
+        }
+        const x = qrMargin + col * cellSize;
+        const y = qrMargin + row * cellSize;
+        const factor = (row + col) / (moduleCount * 2);
+        const [r, g, b] = this._interpolateColor(colorStart, colorEnd, factor);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        switch (style) {
+          case 'classic':
+            ctx.fillRect(x, y, cellSize, cellSize);
+            break;
+          case 'diamond':
+            this._drawDiamond(ctx, x, y, cellSize);
+            break;
+          case 'rounded':
+            this._drawRoundedSquare(ctx, x, y, cellSize, cellSize / 3);
+            break;
+          case 'batik':
+            this._drawWaterWave(ctx, x, y, cellSize);
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(Math.PI / 2);
+            this._drawWaterWave(ctx, 0, 0, cellSize);
+            ctx.restore();
+            break;
+          case 'wave':
+            this._drawBatikLine(ctx, x, y, cellSize);
+            break;
+          case 'stain':
+            this._drawStain(ctx, x + cellSize / 2, y + cellSize / 2, cellSize);
+            break;
+          case 'fluid':
+            this._drawFluidPattern(
+              ctx,
+              x + cellSize / 2,
+              y + cellSize / 2,
+              cellSize,
+            );
+            break;
+        }
+      }
+    }
+
+    const resolvedIcon = this._resolvePath(icon || '');
+    if (resolvedIcon && existsSync(resolvedIcon)) {
+      const iconImage = await loadImage(resolvedIcon);
+      const iconSize = qrSize / 5;
+      const iconX = (qrSize - iconSize) / 2;
+      const iconY = (qrSize - iconSize) / 2;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(iconX, iconY, iconSize, iconSize);
+      ctx.drawImage(iconImage, iconX, iconY, iconSize, iconSize);
+    }
+
+    return canvas;
+  }
+
   async generateQrCode({
     content,
     style,
@@ -286,131 +465,61 @@ export class HelperService {
   }: {
     content: string;
     style:
-      | "classic"
-      | "rounded"
-      | "wave"
-      | "stain"
-      | "batik"
-      | "diamond"
-      | "fluid";
+      | 'classic'
+      | 'rounded'
+      | 'wave'
+      | 'stain'
+      | 'batik'
+      | 'diamond'
+      | 'fluid';
     colorRange: [string, string];
     filename: string;
     pathFile: string;
     icon: string;
   }): Promise<string> {
     return new Promise(async (resolve) => {
-      const qrSize = 500; // Size of the QR code
-      const qrMargin = 10;
-      // const basePath = `${appRoot}/../public/qr/${pathFile}`;
       if (!existsSync(pathFile)) {
         mkdirSync(pathFile, { recursive: true });
       }
-
-      // Generate QR code data
-      const qrCodeData = qrcode.create(content, { errorCorrectionLevel: "H" });
-      const modules = qrCodeData.modules;
-      const moduleCount = modules.size;
-
-      // Calculate cell size based on actual module count
-      const usableSize = qrSize - qrMargin * 2; // Area available for the QR code, excluding the margins
-      const cellSize = usableSize / moduleCount;
-
-      // Create a canvas
-      const canvas = createCanvas(qrSize, qrSize);
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, qrSize, qrSize);
-      // Set QR code background color
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, qrSize, qrSize);
-
-      // Extract RGB values from the colorRange
-      const colorStart = this._hexToRgb(colorRange[0]); // e.g., "#000000"
-      const colorEnd = this._hexToRgb(colorRange[1]); // e.g., "#FF0000"
-
-      // Draw the QR code based on the selected style
-      ctx.fillStyle = "#000000"; // QR code dots color
-      for (let row = 0; row < moduleCount; row++) {
-        for (let col = 0; col < moduleCount; col++) {
-          if (modules.get(row, col)) {
-            const x = qrMargin + col * cellSize;
-            const y = qrMargin + row * cellSize;
-            // Calculate gradient factor based on position
-            const factor = (row + col) / (moduleCount * 2); // Normalize to [0, 1]
-            const [r, g, b] = this._interpolateColor(
-              colorStart,
-              colorEnd,
-              factor,
-            );
-
-            // Set the interpolated color for the current module
-            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-            switch (style) {
-              case "classic":
-                ctx.fillRect(x, y, cellSize, cellSize);
-                break;
-              case "diamond":
-                this._drawDiamond(ctx, x, y, cellSize);
-                break;
-              case "rounded":
-                this._drawRoundedSquare(ctx, x, y, cellSize, cellSize / 3); // Rounded corner
-                break;
-              case "batik":
-                this._drawWaterWave(ctx, x, y, cellSize); // Water wave pattern
-                ctx.save();
-                ctx.translate(x, y);
-                ctx.rotate(Math.PI / 2);
-                this._drawWaterWave(ctx, 0, 0, cellSize); // Rotate to draw vertical waves
-                ctx.restore();
-                break;
-              case "wave":
-                this._drawBatikLine(ctx, x, y, cellSize); // Batik-like wavy lines
-                break;
-              case "stain":
-                this._drawStain(
-                  ctx,
-                  x + cellSize / 2,
-                  y + cellSize / 2,
-                  cellSize,
-                ); // Stain-like irregular blobs
-                break;
-              case "fluid":
-                this._drawFluidPattern(
-                  ctx,
-                  x + cellSize / 2,
-                  y + cellSize / 2,
-                  cellSize,
-                ); // Stain-like irregular blobs
-                break;
-            }
-          }
-        }
-      }
-
-      if (existsSync(icon)) {
-        // Load the icon and calculate positioning
-        const iconImage = await loadImage(`${appRoot}/assets/icon.png`);
-        const iconSize = qrSize / 5; // Icon size
-        const iconX = (qrSize - iconSize) / 2;
-        const iconY = (qrSize - iconSize) / 2;
-
-        // Draw a background behind the icon using the QR code background color
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(iconX, iconY, iconSize, iconSize);
-        // this._drawRoundedRectangle(ctx, iconX, iconY, iconSize, iconSize);
-
-        // Draw the icon on top of the background
-        ctx.drawImage(iconImage, iconX, iconY, iconSize, iconSize);
-      }
-
-      // Save the final image with the icon and selected QR code style
-      const finalPath = join(pathFile, `${filename}.png`);
-      const out = createWriteStream(finalPath);
-      const stream = canvas.createPNGStream();
-      stream.pipe(out);
-      out.on("finish", () => {
-        console.log(`QR code with ${style} style saved as ${finalPath}`);
-        return resolve(finalPath);
+      const canvas = await this._renderQrCanvas({
+        content,
+        style,
+        colorRange,
+        icon,
       });
+      const buffer = canvas.toBuffer('image/png');
+      const filePath = join(pathFile, `${filename}.png`);
+      const file = createWriteStream(filePath);
+      file.write(buffer);
+      file.close();
+      resolve(filePath);
     });
+  }
+
+  async generateQrPreview({
+    content,
+    style,
+    colorRange,
+    icon,
+  }: {
+    content: string;
+    style:
+      | 'classic'
+      | 'rounded'
+      | 'wave'
+      | 'stain'
+      | 'batik'
+      | 'diamond'
+      | 'fluid';
+    colorRange: [string, string];
+    icon?: string;
+  }) {
+    const canvas = await this._renderQrCanvas({
+      content,
+      style,
+      colorRange,
+      icon,
+    });
+    return canvas.toDataURL('image/png');
   }
 }

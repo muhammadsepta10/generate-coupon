@@ -1,15 +1,15 @@
-import { Module } from "@nestjs/common";
-import { AppConfigService } from "./app-config.service";
-import { ConfigModule, ConfigService } from "@nestjs/config";
-import configuration from "./index";
-import * as Joi from "joi";
+import { Module } from '@nestjs/common';
+import { AppConfigService } from './app-config.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import configuration from './index';
+import * as Joi from 'joi';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       envFilePath:
-        process.env.NODE_ENV === "production"
-          ? ".env"
+        process.env.NODE_ENV === 'production'
+          ? '.env'
           : `.env.${process.env.NODE_ENV}`,
       load: [configuration],
       validationSchema: Joi.object({

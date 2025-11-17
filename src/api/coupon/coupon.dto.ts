@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class generateCouponDTO {
   @ApiProperty()
@@ -14,9 +14,9 @@ export class generateCouponDTO {
   @ApiProperty()
   project: string;
   @ApiProperty({
-    enum: { alpha: "alpha", numeric: "numeric", alphanumeric: "alphanumeric" },
+    enum: { alpha: 'alpha', numeric: 'numeric', alphanumeric: 'alphanumeric' },
   })
-  type: "alpha" | "numeric" | "alphanumeric";
+  type: 'alpha' | 'numeric' | 'alphanumeric';
 }
 
 export class BaseImageMergeDTO {
@@ -82,9 +82,13 @@ export class overLayImageDTO {
   width: number;
   @ApiProperty()
   topRadius: number;
+  @ApiPropertyOptional()
+  path?: string;
 }
 
 export class TextDTO {
+  @ApiProperty()
+  value: string;
   @ApiProperty()
   color: string;
   @ApiProperty()
@@ -144,13 +148,13 @@ export class GenerateQrDTO {
   icon: string;
   pathFile: string;
   style:
-    | "classic"
-    | "rounded"
-    | "wave"
-    | "stain"
-    | "batik"
-    | "diamond"
-    | "fluid";
+    | 'classic'
+    | 'rounded'
+    | 'wave'
+    | 'stain'
+    | 'batik'
+    | 'diamond'
+    | 'fluid';
 }
 
 export class GenerateBulkQr {
@@ -164,11 +168,60 @@ export class GenerateBulkQr {
   colorRange: [string, string];
   @ApiProperty()
   style:
-    | "classic"
-    | "rounded"
-    | "wave"
-    | "stain"
-    | "batik"
-    | "diamond"
-    | "fluid";
+    | 'classic'
+    | 'rounded'
+    | 'wave'
+    | 'stain'
+    | 'batik'
+    | 'diamond'
+    | 'fluid';
+}
+
+export class QrPreviewDTO {
+  @ApiProperty()
+  content: string;
+  @ApiProperty({
+    enum: {
+      classic: 'classic',
+      rounded: 'rounded',
+      wave: 'wave',
+      stain: 'stain',
+      batik: 'batik',
+      diamond: 'diamond',
+      fluid: 'fluid',
+    },
+  })
+  style:
+    | 'classic'
+    | 'rounded'
+    | 'wave'
+    | 'stain'
+    | 'batik'
+    | 'diamond'
+    | 'fluid';
+  @ApiProperty({ type: [String], description: '[startColor, endColor]' })
+  colorRange: [string, string];
+  @ApiPropertyOptional()
+  iconPath?: string;
+}
+
+export class ListQrOutputDTO {
+  @ApiProperty()
+  generatePath: string;
+}
+
+export class DownloadQrDTO {
+  @ApiProperty()
+  generatePath: string;
+  @ApiPropertyOptional()
+  zipName?: string;
+}
+
+export class DownloadPostProcessDTO {
+  @ApiPropertyOptional()
+  path?: string;
+  @ApiPropertyOptional()
+  zipName?: string;
+  @ApiPropertyOptional()
+  project?: string;
 }

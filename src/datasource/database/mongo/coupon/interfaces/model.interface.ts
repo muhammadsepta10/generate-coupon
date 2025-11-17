@@ -1,5 +1,5 @@
-import {CouponsModel} from "./model.coupon.interface"
+import { CouponsModel } from './model.coupon.interface';
 
 export interface DBModel {
-    Coupons: CouponsModel
+  Coupons: CouponsModel;
 }

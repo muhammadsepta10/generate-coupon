@@ -1,5 +1,5 @@
-import { registerAs } from "@nestjs/config";
-export default registerAs("app", () => ({
+import { registerAs } from '@nestjs/config';
+export default registerAs('app', () => ({
   ENV: process.env.APP_ENV,
   PORT: process.env.APP_PORT,
   VERSION: process.env.APP_VERSION,
