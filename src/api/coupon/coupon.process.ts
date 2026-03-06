@@ -46,6 +46,7 @@ const alphanumericArr = [
 ];
 import * as fs from 'node:fs';
 import { createReadStream } from 'node:fs';
+import { randomInt } from 'node:crypto';
 import appRootPath from 'app-root-path';
 import { InjectQueue, Process, Processor } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
@@ -87,8 +88,8 @@ class SeededRandom {
   }
 }
 
-const DEFAULT_DB_CHUNK_SIZE = 5_000;
-const DEFAULT_BULK_WRITE_CHUNK = 50_000;
+const DEFAULT_DB_CHUNK_SIZE = 2_000;
+const DEFAULT_BULK_WRITE_CHUNK = 5_000;
 const PROGRESS_SEGMENTS = 20;
 const QR_QUEUE_BATCH_SIZE = 1_000;
 const MERGE_QUEUE_BATCH_SIZE = 500;
@@ -116,6 +117,10 @@ const deriveNumericSeed = <T>(job: Job<T>) => {
   }
   return hash;
 };
+
+// Yield ke event loop agar Bull bisa heartbeat ke Redis
+const yieldToEventLoop = () =>
+  new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 @Processor('coupon')
 export class CouponProcess {
@@ -268,8 +273,8 @@ export class CouponProcess {
           config.type === 'alpha'
             ? isAlpha
             : config.type === 'numeric'
-            ? isNumeric
-            : isNumeric && isAlpha;
+              ? isNumeric
+              : isNumeric && isAlpha;
         const checkCode = await this.couponModels.Coupons.Coupons.findOne({
           coupon: code,
         });
@@ -405,9 +410,9 @@ export class CouponProcess {
 @Processor('coupon2')
 export class CouponProcess2 {
   private couponModels: DBModel;
-  private readonly limitPerLoop = 1_000_000;
-  private readonly generationChunkSize = 50_000;
-  private readonly candidateOversampleFactor = 1.5;
+  private readonly limitPerLoop = 500_000;
+  private readonly generationChunkSize = 10_000;
+  private readonly candidateOversampleFactor = 1.2;
   private readonly dbChunkSize = DEFAULT_DB_CHUNK_SIZE;
   private readonly bulkWriteChunk = DEFAULT_BULK_WRITE_CHUNK;
   private rng: SeededRandom | null = null;
@@ -415,11 +420,9 @@ export class CouponProcess2 {
     this.couponModels = this.couponDbService.getModels();
   }
 
+  // Menggunakan crypto.randomInt — tidak ada cycling, true random
   _randomInt(min: number, max: number) {
-    if (!this.rng) {
-      this.rng = new SeededRandom(Math.floor(Date.now()));
-    }
-    return this.rng.nextInt(min, max);
+    return randomInt(min, max + 1); // crypto.randomInt upper bound exclusive
   }
 
   _randomElem(arr: string) {
@@ -441,18 +444,11 @@ export class CouponProcess2 {
       );
     }
     let code = '';
-    const seenChars = new Set<string>();
-    const enforceUnique = resolvedCharset.length >= availableLength;
-
+    // Izinkan karakter berulang — memperbesar ruang kombinasi
+    // dari P(26,10) = 19.2T ke 26^10 = 141T
+    // dan menghilangkan inner retry loop yang memblokir event loop
     while (code.length < availableLength) {
-      const candidate = this._randomElem(resolvedCharset);
-      if (enforceUnique && seenChars.has(candidate)) {
-        continue;
-      }
-      code += candidate;
-      if (enforceUnique) {
-        seenChars.add(candidate);
-      }
+      code += this._randomElem(resolvedCharset);
     }
 
     return `${prefix}${code}${postfix}`;
@@ -548,34 +544,24 @@ export class CouponProcess2 {
     return hasAlpha && hasNumeric;
   }
 
-  private filterCodesByProximity(codes: string[]) {
-    if (codes.length < 2) {
-      return codes;
-    }
-    const sorted = [...codes].sort();
-    const valid: string[] = [];
-    for (let index = 0; index < sorted.length; index++) {
-      const code = sorted[index];
-      const codeBfr = sorted[index - 1] ?? '';
-      const codeAftr = sorted[index + 1] ?? '';
-      if (this._checkCodeV4(code, codeBfr, codeAftr)) {
-        valid.push(code);
-      }
-    }
-    return valid;
-  }
-
   private async findExistingCoupons(codes: string[]) {
     if (codes.length === 0) {
       return new Set<string>();
     }
     const duplicates = new Set<string>();
     for (const chunk of chunkArray(codes, this.dbChunkSize)) {
-      const rows = await this.couponModels.Coupons.Coupons.find(
-        { coupon: { $in: chunk } },
-        { coupon: 1, _id: 0 },
-      ).lean();
-      rows.forEach((row) => duplicates.add(row.coupon));
+      try {
+        const rows = await this.couponModels.Coupons.Coupons.find(
+          { coupon: { $in: chunk } },
+          { coupon: 1, _id: 0 },
+        )
+          .lean()
+          .maxTimeMS(120_000);
+        rows.forEach((row) => duplicates.add(row.coupon));
+      } catch (err) {
+        console.error('findExistingCoupons error:', err?.message);
+        // Jika timeout, skip — unique index akan handle saat persist
+      }
       if (duplicates.size === codes.length) {
         break;
       }
@@ -595,64 +581,80 @@ export class CouponProcess2 {
       if (!chunk.length) {
         continue;
       }
-      const operations = chunk.map((coupon) => ({
-        updateOne: {
-          filter: { coupon },
-          update: {
-            $setOnInsert: {
-              coupon,
-              project,
+      try {
+        const operations = chunk.map((coupon) => ({
+          updateOne: {
+            filter: { coupon },
+            update: {
+              $setOnInsert: {
+                coupon,
+                project,
+              },
             },
+            upsert: true,
           },
-          upsert: true,
-        },
-      }));
+        }));
 
-      const result = await this.couponModels.Coupons.Coupons.bulkWrite(
-        operations,
-        { ordered: false },
-      );
-      const upsertedIds = result.upsertedIds ?? {};
-      const insertedIndexes = new Set<number>(
-        Object.keys(upsertedIds).map((key) => Number(key)),
-      );
-      chunk.forEach((code, index) => {
-        if (insertedIndexes.has(index)) {
-          inserted.push(code);
-          return;
-        }
-        duplicates.push(code);
-      });
+        const result = await this.couponModels.Coupons.Coupons.bulkWrite(
+          operations,
+          { ordered: false },
+        );
+        const upsertedIds = result.upsertedIds ?? {};
+        const insertedIndexes = new Set<number>(
+          Object.keys(upsertedIds).map((key) => Number(key)),
+        );
+        chunk.forEach((code, index) => {
+          if (insertedIndexes.has(index)) {
+            inserted.push(code);
+            return;
+          }
+          duplicates.push(code);
+        });
+      } catch (err) {
+        console.error('persistCoupons bulkWrite error:', err?.message);
+        chunk.forEach((c) => duplicates.push(c));
+      }
     }
 
     return { inserted, duplicates };
   }
 
-  private generateCandidateSet(
+  private async generateCandidateSet(
     target: number,
     charset: string,
     postfix: string,
     prefix: string,
     totalLength: number,
     type: generateCouponDTO['type'],
-    existing: Set<string>,
+    blocked?: Set<string>,
   ) {
     const desiredSize = Math.max(
       target,
       Math.ceil(target * this.candidateOversampleFactor),
     );
     const candidates = new Set<string>();
-    const maxAttempts = Math.max(desiredSize * 20, 1000);
+    const maxAttempts = Math.max(desiredSize * 5, 1000);
     let attempts = 0;
+    let yieldCounter = 0;
+
     while (candidates.size < desiredSize && attempts < maxAttempts) {
       attempts++;
+      yieldCounter++;
+
+      // Yield ke event loop setiap 10K iterasi
+      // KRITIS: tanpa ini Bull kehilangan lock dan job jadi stalled
+      if (yieldCounter >= 10_000) {
+        yieldCounter = 0;
+        await yieldToEventLoop();
+      }
+
       const candidate = this.generateOneCode(
         charset,
         postfix,
         prefix,
         totalLength,
       );
-      if (existing.has(candidate) || candidates.has(candidate)) {
+      if (blocked?.has(candidate) || candidates.has(candidate)) {
         continue;
       }
       if (!this.isCodeTypeValid(candidate, type, prefix, postfix)) {
@@ -660,9 +662,15 @@ export class CouponProcess2 {
       }
       candidates.add(candidate);
     }
-    if (candidates.size < target) {
+
+    if (candidates.size === 0) {
       throw new Error(
-        'Unable to generate the requested amount of unique coupon codes. Please adjust the configuration.',
+        'Unable to generate any coupon codes. Check charset/length configuration.',
+      );
+    }
+    if (candidates.size < target) {
+      console.warn(
+        `generateCandidateSet: only got ${candidates.size}/${target} after ${attempts} attempts`,
       );
     }
     return Array.from(candidates);
@@ -691,91 +699,145 @@ export class CouponProcess2 {
       loopTotal,
     } = params;
 
-    const inserted: string[] = [];
-    const knownDuplicates = new Set<string>();
+    // TIDAK menggunakan insertedSet/inserted[] yang terus tumbuh di memory
+    let totalInserted = 0;
+    const rejectedSet = new Set<string>();
+    const rejectedQueue: string[] = [];
+    const rejectedCacheLimit = 50_000;
+    const rememberRejected = (code: string) => {
+      if (!code || rejectedSet.has(code)) {
+        return;
+      }
+      rejectedSet.add(code);
+      rejectedQueue.push(code);
+      if (rejectedQueue.length > rejectedCacheLimit) {
+        const oldest = rejectedQueue.shift();
+        if (oldest) {
+          rejectedSet.delete(oldest);
+        }
+      }
+    };
     const startTime = new Date();
     const startLabel = format(startTime, 'yyyy-MM-dd HH:mm:ss');
     let attemptsWithoutProgress = 0;
     const progressInterval = Math.max(
       Math.floor(target / PROGRESS_SEGMENTS),
-      10_000,
+      5_000,
     );
     let lastLoggedProgress = 0;
 
-    while (inserted.length < target) {
-      const remaining = target - inserted.length;
+    // Init CSV file untuk append per batch
+    const csvFilePath = this.initCsvFilePath(
+      project,
+      prefix,
+      postfix,
+      loopIndex,
+    );
+    await fs.promises.writeFile(csvFilePath, 'coupon\r\n', {
+      encoding: 'utf8',
+    });
+
+    console.log(
+      `=== BATCH START === loop ${loopIndex + 1}/${loopTotal}, target: ${target}, started: ${startLabel}, csv: ${csvFilePath}`,
+    );
+
+    while (totalInserted < target) {
+      const remaining = target - totalInserted;
       const batchSize = Math.min(remaining, this.generationChunkSize);
-      const blocked = new Set<string>([...inserted, ...knownDuplicates]);
-      const candidates = this.generateCandidateSet(
+
+      console.log(
+        `[loop ${loopIndex + 1}] generating ${batchSize} candidates, progress: ${totalInserted}/${target}`,
+      );
+
+      // generateCandidateSet sekarang async (dengan yield ke event loop)
+      const candidates = await this.generateCandidateSet(
         batchSize,
         charset,
         postfix,
         prefix,
         totalLength,
         type,
-        blocked,
+        rejectedSet,
       );
-      const proximitySafe = this.filterCodesByProximity(candidates);
-      const filteredCandidates: string[] = [];
 
-      for (const candidateChunk of chunkArray(
-        proximitySafe,
-        this.dbChunkSize,
-      )) {
-        if (!candidateChunk.length) {
-          continue;
-        }
-        const duplicatesInDb = await this.findExistingCoupons(candidateChunk);
-        duplicatesInDb.forEach((code) => knownDuplicates.add(code));
-        const uniqueChunk = candidateChunk.filter(
-          (code) => !knownDuplicates.has(code),
-        );
-        filteredCandidates.push(...uniqueChunk);
-        if (filteredCandidates.length >= batchSize) {
-          break;
-        }
-      }
+      console.log(
+        `[loop ${loopIndex + 1}] generated ${candidates.length} candidates, persisting...`,
+      );
 
-      const candidatesToInsert = filteredCandidates.slice(0, batchSize);
-      if (!candidatesToInsert.length) {
-        attemptsWithoutProgress++;
-        continue;
-      }
-
+      // SKIP filterCodesByProximity — menyebabkan rejection berlebihan
+      // SKIP findExistingCoupons — index 15GB di cache 7.8GB = thrashing
+      // Langsung persist, biarkan MongoDB unique index handle duplicate
       const { inserted: newlyInserted, duplicates: duplicatesOnInsert } =
-        await this.persistCoupons(candidatesToInsert, project);
-      duplicatesOnInsert.forEach((code) => knownDuplicates.add(code));
+        await this.persistCoupons(candidates.slice(0, batchSize), project);
+
+      duplicatesOnInsert.forEach((code) => rememberRejected(code));
 
       if (newlyInserted.length === 0) {
         attemptsWithoutProgress++;
-        if (attemptsWithoutProgress > 25) {
+        console.warn(
+          `[loop ${loopIndex + 1}] no inserts this batch, attempt ${attemptsWithoutProgress}/50`,
+        );
+        if (attemptsWithoutProgress > 50) {
           throw new Error(
-            'Generation stalled because too many duplicates already exist. Consider adjusting prefix, postfix, or charset.',
+            'Generation stalled — all candidates are duplicates.',
           );
         }
         continue;
       }
 
       attemptsWithoutProgress = 0;
-      inserted.push(...newlyInserted);
+      totalInserted += newlyInserted.length;
+
+      // Tulis CSV secara append — tidak akumulasi di memory
+      await fs.promises.appendFile(
+        csvFilePath,
+        newlyInserted.join('\r\n') + '\r\n',
+        { encoding: 'utf8' },
+      );
 
       if (
-        inserted.length - lastLoggedProgress >= progressInterval ||
-        inserted.length >= target
+        totalInserted - lastLoggedProgress >= progressInterval ||
+        totalInserted >= target
       ) {
-        lastLoggedProgress = inserted.length;
+        lastLoggedProgress = totalInserted;
+        const mem = process.memoryUsage();
         console.log(
-          'coupon generation progress',
+          'coupon progress',
           `loop ${loopIndex + 1}/${loopTotal}`,
-          `inserted ${inserted.length}/${target}`,
-          `last batch +${newlyInserted.length}`,
-          `started ${startLabel}`,
+          `inserted ${totalInserted}/${target}`,
+          `batch +${newlyInserted.length}`,
+          `dupes ${duplicatesOnInsert.length}`,
           `elapsed ${formatDistanceToNowStrict(startTime)}`,
+          `heap ${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
         );
       }
     }
 
-    return inserted;
+    console.log(
+      `=== BATCH DONE === loop ${loopIndex + 1}/${loopTotal}, inserted: ${totalInserted}`,
+    );
+    return totalInserted;
+  }
+
+  private initCsvFilePath(
+    project: string,
+    prefix: string,
+    postfix: string,
+    loopIndex: number,
+  ): string {
+    const originName =
+      prefix !== '' ? prefix : postfix !== '' ? postfix : project;
+    const dirPath = `${appRootPath}/../public/coupons/csv/${project}`;
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    let fileName = `${originName}-loop${loopIndex}`;
+    let counter = 0;
+    while (fs.existsSync(`${dirPath}/${fileName}.csv`)) {
+      fileName = `${originName}-loop${loopIndex}-${counter}`;
+      counter++;
+    }
+    return `${dirPath}/${fileName}.csv`;
   }
 
   @Process()
@@ -791,12 +853,33 @@ export class CouponProcess2 {
     } = job.data;
     const charset = char && char.length > 0 ? char : alphanumericArr.join('');
 
+    console.log(
+      '=== JOB START ===',
+      JSON.stringify({
+        jobId: job.id,
+        count,
+        lengths,
+        charsetLength: charset.length,
+        charset,
+        project,
+        type,
+        prefix: prefix || '(none)',
+        postfix: postfix || '(none)',
+        timestamp: new Date().toISOString(),
+      }),
+    );
+
     const totalLoop = Math.ceil(count / this.limitPerLoop);
     let remaining = count;
-    this.rng = new SeededRandom(deriveNumericSeed(job));
+    // Tidak perlu SeededRandom — menggunakan crypto.randomInt
+
     for (let loopIndex = 0; loopIndex < totalLoop; loopIndex++) {
       const chunkTarget = Math.min(remaining, this.limitPerLoop);
-      const inserted = await this.generateAndPersistBatch({
+      console.log(
+        `=== LOOP ${loopIndex + 1}/${totalLoop} === target: ${chunkTarget}, remaining: ${remaining}`,
+      );
+
+      const insertedCount = await this.generateAndPersistBatch({
         target: chunkTarget,
         charset,
         postfix,
@@ -807,9 +890,18 @@ export class CouponProcess2 {
         loopIndex,
         loopTotal: totalLoop,
       });
-      remaining -= inserted.length;
-      await this.writeCsv(inserted, project, prefix, postfix);
+      remaining -= insertedCount;
+      // CSV sudah ditulis per batch di generateAndPersistBatch
     }
+
+    console.log(
+      '=== JOB COMPLETE ===',
+      JSON.stringify({
+        jobId: job.id,
+        requested: count,
+        generated: count - remaining,
+      }),
+    );
     this.rng = null;
   }
 }
