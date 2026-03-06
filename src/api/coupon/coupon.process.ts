@@ -268,8 +268,8 @@ export class CouponProcess {
           config.type === 'alpha'
             ? isAlpha
             : config.type === 'numeric'
-              ? isNumeric
-              : isNumeric && isAlpha;
+            ? isNumeric
+            : isNumeric && isAlpha;
         const checkCode = await this.couponModels.Coupons.Coupons.findOne({
           coupon: code,
         });
@@ -636,7 +636,6 @@ export class CouponProcess2 {
     totalLength: number,
     type: generateCouponDTO['type'],
     existing: Set<string>,
-    blocked?: Set<string>,
   ) {
     const desiredSize = Math.max(
       target,
@@ -653,11 +652,7 @@ export class CouponProcess2 {
         prefix,
         totalLength,
       );
-      if (
-        existing.has(candidate) ||
-        blocked?.has(candidate) ||
-        candidates.has(candidate)
-      ) {
+      if (existing.has(candidate) || candidates.has(candidate)) {
         continue;
       }
       if (!this.isCodeTypeValid(candidate, type, prefix, postfix)) {
@@ -697,23 +692,7 @@ export class CouponProcess2 {
     } = params;
 
     const inserted: string[] = [];
-    const insertedSet = new Set<string>();
-    const rejectedSet = new Set<string>();
-    const rejectedQueue: string[] = [];
-    const rejectedCacheLimit = 200_000;
-    const rememberRejected = (code: string) => {
-      if (!code || insertedSet.has(code) || rejectedSet.has(code)) {
-        return;
-      }
-      rejectedSet.add(code);
-      rejectedQueue.push(code);
-      if (rejectedQueue.length > rejectedCacheLimit) {
-        const oldest = rejectedQueue.shift();
-        if (oldest) {
-          rejectedSet.delete(oldest);
-        }
-      }
-    };
+    const knownDuplicates = new Set<string>();
     const startTime = new Date();
     const startLabel = format(startTime, 'yyyy-MM-dd HH:mm:ss');
     let attemptsWithoutProgress = 0;
@@ -726,6 +705,7 @@ export class CouponProcess2 {
     while (inserted.length < target) {
       const remaining = target - inserted.length;
       const batchSize = Math.min(remaining, this.generationChunkSize);
+      const blocked = new Set<string>([...inserted, ...knownDuplicates]);
       const candidates = this.generateCandidateSet(
         batchSize,
         charset,
@@ -733,8 +713,7 @@ export class CouponProcess2 {
         prefix,
         totalLength,
         type,
-        insertedSet,
-        rejectedSet,
+        blocked,
       );
       const proximitySafe = this.filterCodesByProximity(candidates);
       const filteredCandidates: string[] = [];
@@ -747,9 +726,9 @@ export class CouponProcess2 {
           continue;
         }
         const duplicatesInDb = await this.findExistingCoupons(candidateChunk);
-        duplicatesInDb.forEach((code) => rememberRejected(code));
+        duplicatesInDb.forEach((code) => knownDuplicates.add(code));
         const uniqueChunk = candidateChunk.filter(
-          (code) => !duplicatesInDb.has(code),
+          (code) => !knownDuplicates.has(code),
         );
         filteredCandidates.push(...uniqueChunk);
         if (filteredCandidates.length >= batchSize) {
@@ -765,7 +744,7 @@ export class CouponProcess2 {
 
       const { inserted: newlyInserted, duplicates: duplicatesOnInsert } =
         await this.persistCoupons(candidatesToInsert, project);
-      duplicatesOnInsert.forEach((code) => rememberRejected(code));
+      duplicatesOnInsert.forEach((code) => knownDuplicates.add(code));
 
       if (newlyInserted.length === 0) {
         attemptsWithoutProgress++;
@@ -779,10 +758,6 @@ export class CouponProcess2 {
 
       attemptsWithoutProgress = 0;
       inserted.push(...newlyInserted);
-      newlyInserted.forEach((code) => {
-        insertedSet.add(code);
-        rejectedSet.delete(code);
-      });
 
       if (
         inserted.length - lastLoggedProgress >= progressInterval ||
