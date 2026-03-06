@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Background – Coupon & QR Utilities</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/shared.css" />
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+  <a class="nav-brand" href="/">RDBX Tools</a>
+  <ul class="nav-links">
+    <li><a href="/">Dashboard</a></li>
+    <li><a href="/generate-codes.html">Generate Codes</a></li>
+    <li><a href="/generate-qr.html">Generate QR</a></li>
+    <li><a href="/qr-background.html">QR Background</a></li>
+  </ul>
+  <div class="nav-status">
+    <div class="dot"></div>
+    <span class="status-label">Disconnected</span>
+  </div>
+</nav>
+
+<div class="page-container">
+  <h1 class="page-title"><span class="icon">🖼️</span> QR Background Layout Editor</h1>
+
+  <div class="editor-layout">
+    <!-- Left: Controls -->
+    <div>
+      <!-- Background Upload -->
+      <div class="card">
+        <h2>🖼️ Background Image</h2>
+        <div class="form-grid">
+          <label class="wide">
+            Upload Background
+            <input type="file" id="bgUpload" accept="image/*" />
+          </label>
+          <label class="wide">
+            Or enter path
+            <input type="text" id="backgroundPath" placeholder="e.g. public/assets/backgrounds/bg.png" />
+          </label>
+          <label>
+            Or select existing
+            <select id="bgSelect">
+              <option value="">Select...</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-actions mt-1">
+          <button class="btn primary" id="loadBgBtn">Load Background</button>
+        </div>
+      </div>
+
+      <!-- QR Overlay Settings -->
+      <div class="card">
+        <h2>📐 QR Overlay Position</h2>
+        <div class="form-grid">
+          <label>Width (px) <input type="number" id="overlayWidth" value="200" /></label>
+          <label>Height (px) <input type="number" id="overlayHeight" value="200" /></label>
+          <label>X Position <input type="number" id="overlayX" value="50" /></label>
+          <label>Y Position <input type="number" id="overlayY" value="50" /></label>
+          <label>Border Radius <input type="number" id="overlayRadius" value="0" /></label>
+        </div>
+      </div>
+
+      <!-- Text Overlay Settings -->
+      <div class="card">
+        <h2>✏️ Text Overlay
+          <label style="margin-left:auto;display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;font-weight:400">
+            <input type="checkbox" id="textEnabled" checked /> Enable
+          </label>
+        </h2>
+        <div id="textFields" class="form-grid">
+          <label class="wide">Text <input type="text" id="textValue" value="SAMPLE" /></label>
+          <label>Font Size <input type="number" id="textSize" value="24" /></label>
+          <label>X Position <input type="number" id="textX" value="100" /></label>
+          <label>Y Position <input type="number" id="textY" value="100" /></label>
+          <label>Color <input type="color" id="textColor" value="#ffffff" /></label>
+          <label>Font Family
+            <select id="textFont">
+              <option value="Arial">Arial</option>
+              <option value="Helvetica">Helvetica</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Impact">Impact</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <!-- QR Source for Preview -->
+      <div class="card">
+        <h2>📱 QR Preview Source</h2>
+        <p class="text-xs text-dim mb-1" id="qrPreviewSourceInfo">Select a QR project to auto-load preview</p>
+        <div class="form-grid">
+          <label class="wide">
+            QR Preview Image
+            <input type="text" id="previewQrPath" value="" placeholder="Auto-filled from QR folder" readonly />
+          </label>
+        </div>
+        <div class="form-actions mt-1">
+          <button class="btn primary" id="mergePreviewBtn">Preview Merge</button>
+        </div>
+      </div>
+
+      <!-- Source & Target -->
+      <div class="card">
+        <h2>🚀 Bulk Post-Process</h2>
+        <h3>Select QR Project</h3>
+        <div id="qrProjectFolders" class="folder-grid mb-1">
+          <p class="text-dim text-sm">Loading...</p>
+        </div>
+        <div class="form-grid">
+          <label>QR Source Path <input type="text" id="qrSourcePath" placeholder="Auto-filled" /></label>
+          <label>Target Path <input type="text" id="qrTargetPath" placeholder="Auto-filled" /></label>
+        </div>
+        <div class="form-actions mt-1">
+          <button class="btn primary" id="postProcessBtn">Start Post-Process</button>
+          <button class="btn" id="downloadPostBtn">Download Result</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Canvas Preview -->
+    <div>
+      <div class="card">
+        <h2>Layout Preview</h2>
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <img id="backgroundPreview" class="bg-preview" src="" alt="Background" style="display:none;" />
+          <div id="qrOverlay" class="overlay" style="display:none;">
+            <img id="qrOverlayImage" src="" alt="QR" />
+            <span class="label" id="qrOverlayLabel">(0, 0)</span>
+            <div class="resize-handle" id="resizeHandle"></div>
+          </div>
+          <div id="textPreview" class="text-overlay" style="display:none;">SAMPLE</div>
+        </div>
+        <p class="text-xs text-dim mt-1" id="dimensionInfo">Load a background to begin</p>
+      </div>
+
+      <div class="card preview-section">
+        <h2>Merge Preview</h2>
+        <img id="mergePreviewImage" class="preview-image" src="" alt="Merge Preview" style="display:none;" />
+      </div>
+
+      <div class="card">
+        <h2>Job Progress</h2>
+        <div id="jobProgress" class="jobs-grid">
+          <div class="jobs-empty">No active jobs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/assets/shared.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const jobTracker = new JobTracker('#jobProgress', { queueFilter: ['post-process-qr', 'merge-image'] });
+  jobTracker.loadActive();
+
+  // ── State ──
+  const state = {
+    overlay: { width: 200, height: 200, x: 50, y: 50, topRadius: 0 },
+    text: { value: 'SAMPLE', size: 24, x: 100, y: 100, color: '#ffffff', fontFamily: 'Arial' },
+    bgSize: { width: 1000, height: 600 },
+    scale: 1,
+    latestQrDataUrl: '',
+    pointer: null,
+  };
+
+  // ── Read / Sync inputs ──
+  function readOverlayInputs() {
+    state.overlay = {
+      width: Number($('#overlayWidth').value) || 0,
+      height: Number($('#overlayHeight').value) || 0,
+      x: Number($('#overlayX').value) || 0,
+      y: Number($('#overlayY').value) || 0,
+      topRadius: Number($('#overlayRadius').value) || 0,
+    };
+  }
+
+  function readTextInputs() {
+    state.text = {
+      value: $('#textValue').value || '',
+      size: Number($('#textSize').value) || 0,
+      x: Number($('#textX').value) || 0,
+      y: Number($('#textY').value) || 0,
+      color: $('#textColor').value || '#ffffff',
+      fontFamily: $('#textFont').value || 'Arial',
+    };
+  }
+
+  function syncInputsFromState() {
+    $('#overlayWidth').value = Math.round(state.overlay.width);
+    $('#overlayHeight').value = Math.round(state.overlay.height);
+    $('#overlayX').value = Math.round(state.overlay.x);
+    $('#overlayY').value = Math.round(state.overlay.y);
+    $('#overlayRadius').value = Math.round(state.overlay.topRadius);
+    $('#textValue').value = state.text.value;
+    $('#textSize').value = Math.round(state.text.size);
+    $('#textX').value = Math.round(state.text.x);
+    $('#textY').value = Math.round(state.text.y);
+    $('#textColor').value = state.text.color;
+    $('#textFont').value = state.text.fontFamily;
+  }
+
+  // ── Apply visual styles ──
+  function applyOverlayStyles() {
+    const overlay = $('#qrOverlay');
+    const textPreview = $('#textPreview');
+    const s = state.scale;
+    overlay.style.width = `${state.overlay.width * s}px`;
+    overlay.style.height = `${state.overlay.height * s}px`;
+    overlay.style.left = `${state.overlay.x * s}px`;
+    overlay.style.top = `${state.overlay.y * s}px`;
+    overlay.style.borderRadius = `${state.overlay.topRadius * s}px`;
+    textPreview.style.left = `${state.text.x * s}px`;
+    textPreview.style.top = `${state.text.y * s}px`;
+    textPreview.textContent = state.text.value;
+    textPreview.style.fontSize = `${state.text.size * s}px`;
+    textPreview.style.color = state.text.color;
+    textPreview.style.fontFamily = state.text.fontFamily;
+    $('#qrOverlayLabel').textContent = `(${Math.round(state.overlay.x)}, ${Math.round(state.overlay.y)})`;
+  }
+
+  function updateScaleFromBackground() {
+    const bg = $('#backgroundPreview');
+    if (!bg.naturalWidth || !bg.clientWidth) { state.scale = 1; return; }
+    state.bgSize = { width: bg.naturalWidth, height: bg.naturalHeight };
+    state.scale = bg.clientWidth / bg.naturalWidth;
+    applyOverlayStyles();
+    $('#dimensionInfo').textContent = `${bg.naturalWidth} × ${bg.naturalHeight} px (scale: ${(state.scale * 100).toFixed(0)}%)`;
+  }
+
+  // ── Pointer handlers (drag & resize) ──
+  function initPointerHandlers() {
+    const overlay = $('#qrOverlay');
+    const resizeHandle = $('#resizeHandle');
+    overlay.style.touchAction = 'none';
+
+    function startPointer(event, type) {
+      event.preventDefault();
+      overlay.setPointerCapture(event.pointerId);
+      state.pointer = {
+        type,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startOverlay: { ...state.overlay },
+      };
+    }
+
+    overlay.addEventListener('pointerdown', (e) => {
+      startPointer(e, e.target === resizeHandle ? 'resize' : 'drag');
+    });
+
+    overlay.addEventListener('pointermove', (e) => {
+      if (!state.pointer || state.pointer.pointerId !== e.pointerId) return;
+      const dx = (e.clientX - state.pointer.startX) / state.scale;
+      const dy = (e.clientY - state.pointer.startY) / state.scale;
+      if (state.pointer.type === 'drag') {
+        const maxX = Math.max(state.bgSize.width - state.overlay.width, 0);
+        const maxY = Math.max(state.bgSize.height - state.overlay.height, 0);
+        state.overlay.x = clamp(state.pointer.startOverlay.x + dx, 0, maxX);
+        state.overlay.y = clamp(state.pointer.startOverlay.y + dy, 0, maxY);
+      } else {
+        state.overlay.width = clamp(state.pointer.startOverlay.width + dx, 10, state.bgSize.width - state.overlay.x);
+        state.overlay.height = clamp(state.pointer.startOverlay.height + dy, 10, state.bgSize.height - state.overlay.y);
+      }
+      syncInputsFromState();
+      applyOverlayStyles();
+    });
+
+    const endPointer = (e) => {
+      if (state.pointer && state.pointer.pointerId === e.pointerId) {
+        overlay.releasePointerCapture(e.pointerId);
+        state.pointer = null;
+      }
+    };
+    overlay.addEventListener('pointerup', endPointer);
+    overlay.addEventListener('pointercancel', endPointer);
+  }
+
+  // ── Text overlay drag ──
+  function initTextDrag() {
+    const textEl = $('#textPreview');
+    textEl.style.touchAction = 'none';
+    let dragging = null;
+
+    textEl.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      textEl.setPointerCapture(e.pointerId);
+      dragging = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startText: { ...state.text },
+      };
+    });
+
+    textEl.addEventListener('pointermove', (e) => {
+      if (!dragging || dragging.pointerId !== e.pointerId) return;
+      const dx = (e.clientX - dragging.startX) / state.scale;
+      const dy = (e.clientY - dragging.startY) / state.scale;
+      state.text.x = clamp(dragging.startText.x + dx, 0, state.bgSize.width);
+      state.text.y = clamp(dragging.startText.y + dy, 0, state.bgSize.height);
+      syncInputsFromState();
+      applyOverlayStyles();
+    });
+
+    const end = (e) => {
+      if (dragging && dragging.pointerId === e.pointerId) {
+        textEl.releasePointerCapture(e.pointerId);
+        dragging = null;
+      }
+    };
+    textEl.addEventListener('pointerup', end);
+    textEl.addEventListener('pointercancel', end);
+  }
+
+  // ── Bind inputs ──
+  ['#overlayWidth', '#overlayHeight', '#overlayX', '#overlayY', '#overlayRadius'].forEach(sel => {
+    $(sel).addEventListener('input', () => { readOverlayInputs(); applyOverlayStyles(); });
+  });
+  ['#textValue', '#textSize', '#textX', '#textY', '#textColor', '#textFont'].forEach(sel => {
+    $(sel).addEventListener('input', () => { readTextInputs(); applyOverlayStyles(); });
+  });
+
+  // ── Background loading ──
+  async function loadBackgrounds() {
+    try {
+      const res = await apiFetch('/api/coupon/files/backgrounds');
+      const bgs = Array.isArray(res) ? res : (res?.data ?? []);
+      const select = $('#bgSelect');
+      select.innerHTML = '<option value="">Select...</option>';
+      if (bgs?.length) {
+        bgs.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.fullPath || b.path || b;
+          opt.textContent = b.filename || b.name || b;
+          select.appendChild(opt);
+        });
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  $('#bgUpload').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await apiFetch('/api/coupon/upload/background', {
+        method: 'POST',
+        body: formData,
+      })
+      const result = res?.data ?? res;
+      $('#backgroundPath').value = result.fullPath || result.path;
+      toast('Background uploaded: ' + (result.filename || file.name), 'success');
+      loadBackgrounds();
+      loadBackground();
+    } catch (err) { toast('Upload failed: ' + err.message, 'error'); }
+  });
+
+  $('#bgSelect').addEventListener('change', (e) => {
+    if (e.target.value) {
+      $('#backgroundPath').value = e.target.value;
+      loadBackground();
+    }
+  });
+
+  function loadBackground() {
+    const path = $('#backgroundPath').value.trim();
+    if (!path) { toast('Enter background path', 'warn'); return; }
+    const img = $('#backgroundPreview');
+    img.src = toPublicUrl(path);
+    img.style.display = 'block';
+  }
+
+  $('#loadBgBtn').addEventListener('click', loadBackground);
+
+  $('#backgroundPreview').addEventListener('load', () => {
+    updateScaleFromBackground();
+    applyOverlayStyles();
+    // Show overlay elements
+    $('#qrOverlay').style.display = 'flex';
+    updateTextOverlayVisibility();
+  });
+
+  // ── Text Overlay Toggle ──
+  function updateTextOverlayVisibility() {
+    const enabled = $('#textEnabled').checked;
+    $('#textFields').style.display = enabled ? '' : 'none';
+    $('#textPreview').style.display = enabled ? 'block' : 'none';
+  }
+  $('#textEnabled').addEventListener('change', updateTextOverlayVisibility);
+
+  function buildTextPayload() {
+    if (!$('#textEnabled').checked) return null;
+    return {
+      value: state.text.value,
+      size: state.text.size,
+      fontFamily: state.text.fontFamily,
+      color: state.text.color,
+      x: state.text.x,
+      y: state.text.y,
+    };
+  }
+
+  // ── Auto-load QR sample from folder ──
+  async function loadQrSample(folderPath) {
+    try {
+      const res = await apiFetch(`/api/coupon/qr/sample?folder=${encodeURIComponent(folderPath)}`);
+      const result = res?.data ?? res;
+      if (result?.publicUrl) {
+        const imgUrl = result.publicUrl;
+        state.latestQrDataUrl = imgUrl;
+        $('#qrOverlayImage').src = imgUrl;
+        $('#previewQrPath').value = result.path || imgUrl;
+        $('#qrPreviewSourceInfo').textContent = 'QR loaded from: ' + (result.path || imgUrl);
+      } else {
+        $('#qrPreviewSourceInfo').textContent = 'No QR images found in this folder';
+      }
+    } catch (e) {
+      $('#qrPreviewSourceInfo').textContent = 'Failed to load QR sample';
+    }
+  }
+
+  // ── Merge Preview ──
+  $('#mergePreviewBtn').addEventListener('click', async () => {
+    if (!state.latestQrDataUrl) {
+      toast('Select a QR project to load preview', 'warn');
+      return;
+    }
+    const backgroundPath = $('#backgroundPath').value.trim();
+    if (!backgroundPath) { toast('Load a background first', 'warn'); return; }
+
+    const btn = $('#mergePreviewBtn');
+    btn.disabled = true;
+    btn.textContent = 'Merging...';
+
+    try {
+      const payload = {
+        baseImage: { path: backgroundPath },
+        filename: 'preview.png',
+        overlayImage: {
+          path: state.latestQrDataUrl,
+          width: state.overlay.width,
+          height: state.overlay.height,
+          x: state.overlay.x,
+          y: state.overlay.y,
+          topRadius: state.overlay.topRadius,
+        },
+        pathSave: '/tmp',
+      };
+      const textPayload = buildTextPayload();
+      if (textPayload) {
+        payload.text = textPayload;
+      } else {
+        payload.text = { value: '', size: 0, fontFamily: 'Arial', color: '#ffffff', x: 0, y: 0 };
+      }
+      const res = await apiFetch('/api/coupon/preview/merge', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      const result = res?.data ?? res;
+      if (result?.dataUrl) {
+        const img = $('#mergePreviewImage');
+        img.src = result.dataUrl;
+        img.style.display = 'block';
+        toast('Merge preview done', 'success');
+      }
+    } catch (e) {
+      toast('Merge failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Preview Merge';
+    }
+  });
+
+  // ── Load QR project folders ──
+  async function loadQrProjects() {
+    try {
+      const res = await apiFetch('/api/coupon/folders/qr');
+      const folders = Array.isArray(res) ? res : (res?.data ?? []);
+      const container = $('#qrProjectFolders');
+      if (!folders?.length) {
+        container.innerHTML = '<p class="text-dim text-sm">No QR folders found</p>';
+        return;
+      }
+      container.innerHTML = folders.map(f =>
+        `<div class="folder-card" data-name="${f.name}" data-path="${f.path}">
+          <div class="name">${f.name}</div>
+          <div class="count">${f.fileCount} file(s)</div>
+        </div>`
+      ).join('');
+
+      $$('.folder-card', container).forEach(card => {
+        card.addEventListener('click', () => {
+          $$('.folder-card', container).forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          $('#qrSourcePath').value = card.dataset.path;
+          const postPath = card.dataset.path.replace('/qr/', '/post-process/');
+          $('#qrTargetPath').value = postPath;
+          // Auto-load QR sample from folder
+          loadQrSample(card.dataset.path);
+        });
+      });
+    } catch (e) { toast('Failed to load QR folders: ' + e.message, 'error'); }
+  }
+
+  // ── Post-Process Queue ──
+  $('#postProcessBtn').addEventListener('click', async () => {
+    const backgroundPath = $('#backgroundPath').value.trim();
+    const qrPath = $('#qrSourcePath').value.trim();
+    const qrTargetPath = $('#qrTargetPath').value.trim();
+    if (!backgroundPath || !qrPath || !qrTargetPath) {
+      toast('Fill in background, QR source, and target paths', 'warn');
+      return;
+    }
+
+    const btn = $('#postProcessBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    try {
+      const postPayload = {
+          backgroundPath,
+          qrPath,
+          qrTargetPath,
+          overlayImage: {
+            path: state.latestQrDataUrl || '',
+            width: state.overlay.width,
+            height: state.overlay.height,
+            x: state.overlay.x,
+            y: state.overlay.y,
+            topRadius: state.overlay.topRadius,
+          },
+        };
+      const postText = buildTextPayload();
+      if (postText) {
+        postPayload.text = postText;
+      } else {
+        postPayload.text = { value: '', size: 0, fontFamily: 'Arial', color: '#ffffff', x: 0, y: 0 };
+      }
+      await apiFetch('/api/coupon/post-process-qr', {
+        method: 'POST',
+        body: JSON.stringify(postPayload),
+      })
+      toast('Post-process job queued', 'success');
+    } catch (e) {
+      toast('Post-process failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Start Post-Process';
+    }
+  });
+
+  // ── Download ZIP ──
+  $('#downloadPostBtn').addEventListener('click', () => {
+    const path = $('#qrTargetPath').value.trim();
+    if (!path) { toast('Select a project first', 'warn'); return; }
+    window.open(`/api/coupon/post-process/download?path=${encodeURIComponent(path)}`);
+  });
+
+  // ── WebSocket events ──
+  socketManager.on('job:complete', (d) => {
+    if (d.queue === 'post-process-qr' || d.queue === 'merge-image') {
+      toast('Post-process completed!', 'success');
+    }
+  });
+
+  // ── Window resize re-scale ──
+  window.addEventListener('resize', () => {
+    updateScaleFromBackground();
+  });
+
+  // ── Init ──
+  initPointerHandlers();
+  initTextDrag();
+  readOverlayInputs();
+  readTextInputs();
+  syncInputsFromState();
+  updateTextOverlayVisibility();
+  loadBackgrounds();
+  loadQrProjects();
+});
+</script>
+</body>
+</html>

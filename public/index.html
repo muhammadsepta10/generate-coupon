@@ -1,337 +1,215 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Coupon & QR Utilities</title>
-    <link rel="stylesheet" href="./assets/app.css" />
-  </head>
-  <body>
-    <header class="page-header">
-      <h1>Coupon &amp; QR Generation Console</h1>
-      <p class="subtitle">
-        Kelola kode unik, QR code, dan proses penempelan gambar melalui antarmuka
-        interaktif ini.
-      </p>
-    </header>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard – Coupon & QR Utilities</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/shared.css" />
+</head>
+<body>
 
-    <div class="toolbar">
-      <button type="button" id="refreshProjectStatus" class="btn secondary">
-        Refresh Status Project
-      </button>
+<!-- Navigation -->
+<nav class="nav">
+  <a class="nav-brand" href="/">RDBX Tools</a>
+  <ul class="nav-links">
+    <li><a href="/">Dashboard</a></li>
+    <li><a href="/generate-codes.html">Generate Codes</a></li>
+    <li><a href="/generate-qr.html">Generate QR</a></li>
+    <li><a href="/qr-background.html">QR Background</a></li>
+  </ul>
+  <div class="nav-status">
+    <div class="dot"></div>
+    <span class="status-label">Disconnected</span>
+  </div>
+</nav>
+
+<div class="page-container">
+  <h1 class="page-title"><span class="icon">📊</span> Dashboard</h1>
+
+  <!-- Quick Actions -->
+  <div class="quick-actions">
+    <a class="action-card" href="/generate-codes.html">
+      <span class="icon">🔢</span>
+      <span class="title">Generate Codes</span>
+      <span class="desc">Create unique alphanumeric coupon codes</span>
+    </a>
+    <a class="action-card" href="/generate-qr.html">
+      <span class="icon">📱</span>
+      <span class="title">Generate QR</span>
+      <span class="desc">Batch QR code generation with styling</span>
+    </a>
+    <a class="action-card" href="/qr-background.html">
+      <span class="icon">🖼️</span>
+      <span class="title">QR Background</span>
+      <span class="desc">Merge QR codes onto background images</span>
+    </a>
+    <a class="action-card" href="/admin/queues" target="_blank">
+      <span class="icon">⚙️</span>
+      <span class="title">Bull Monitor</span>
+      <span class="desc">View queue status and manage jobs</span>
+    </a>
+  </div>
+
+  <!-- Active Jobs -->
+  <div class="card">
+    <h2>🚀 Active Jobs</h2>
+    <div id="activeJobs" class="jobs-grid">
+      <div class="jobs-empty">Loading...</div>
     </div>
+  </div>
 
-    <main class="layout">
-      <section class="card" id="coupon-generator">
-        <h2>Generate Kode Unik</h2>
-        <form id="couponForm" class="form-grid">
-          <label>
-            Project
-            <input type="text" id="project" required placeholder="BAT" />
-          </label>
-          <label>
-            Prefix
-            <input type="text" id="prefix" placeholder="BAT" />
-          </label>
-          <label>
-            Postfix
-            <input type="text" id="postfix" placeholder="2025" />
-          </label>
-          <label>
-            Panjang Total
-            <input
-              type="number"
-              id="lengths"
-              min="4"
-              max="12"
-              required
-              value="8"
-            />
-          </label>
-          <label>
-            Jumlah Kode
-            <input
-              type="number"
-              id="count"
-              min="1"
-              step="1"
-              required
-              value="1000"
-            />
-          </label>
-          <label>
-            Custom Charset (opsional)
-            <input
-              type="text"
-              id="char"
-              placeholder="123456789ABCDEFGHJKMNPQRSTUVWXYZ"
-            />
-          </label>
-          <fieldset class="fieldset">
-            <legend>Tipe Karakter</legend>
-            <label><input type="radio" name="type" value="alphanumeric" checked /> Alphanumeric</label>
-            <label><input type="radio" name="type" value="alpha" /> Alpha</label>
-            <label><input type="radio" name="type" value="numeric" /> Numeric</label>
-          </fieldset>
-          <div class="form-actions">
-            <button type="submit" class="btn primary">Generate</button>
-            <button type="button" id="refreshCouponList" class="btn">
-              Refresh List
-            </button>
-            <button type="button" id="downloadCouponZip" class="btn secondary">
-              Download ZIP
-            </button>
-          </div>
-        </form>
+  <!-- Project Overview -->
+  <div class="two-col">
+    <div class="card">
+      <h2>📁 CSV Folders <button class="btn small" id="refreshCsv" style="margin-left:auto">Refresh</button></h2>
+      <div id="csvFolderList" class="folder-grid"></div>
+    </div>
+    <div class="card">
+      <h2>📱 QR Folders <button class="btn small" id="refreshQr" style="margin-left:auto">Refresh</button></h2>
+      <div id="qrFolderList" class="folder-grid"></div>
+    </div>
+  </div>
 
-        <div class="results">
-          <h3>File CSV Tersedia</h3>
-          <ul id="couponFiles" class="list"></ul>
-          <div class="history-block">
-            <h4>Riwayat Project Coupon</h4>
-            <ul id="couponHistory" class="list history-list"></ul>
-          </div>
-        </div>
-      </section>
+  <!-- History -->
+  <div class="card">
+    <h2>📋 Project Overview
+      <button class="btn small" id="refreshOverview" style="margin-left:auto">Refresh</button>
+    </h2>
+    <div class="two-col">
+      <div>
+        <h3>Coupons without QR</h3>
+        <ul class="list" id="pendingQrList"></ul>
+      </div>
+      <div>
+        <h3>QR without Post-Process</h3>
+        <ul class="list" id="pendingPostList"></ul>
+      </div>
+    </div>
+    <div class="two-col mt-2">
+      <div>
+        <h3>Coupon History</h3>
+        <ul class="list" id="couponHistory"></ul>
+      </div>
+      <div>
+        <h3>QR History</h3>
+        <ul class="list" id="qrHistory"></ul>
+      </div>
+    </div>
+  </div>
+</div>
 
-      <section class="card" id="qr-generator">
-        <h2>Generate QR Code Bulk</h2>
-        <form id="qrForm" class="form-grid">
-          <label class="wide">
-            Project (belum memiliki QR)
-            <select id="qrProjectSelect">
-              <option value="">Pilih project...</option>
-            </select>
-          </label>
-          <label>
-            Path CSV Coupon
-            <input
-              type="text"
-              id="couponsPath"
-              placeholder="/public/coupons/csv/BAT"
-              required
-              readonly
-            />
-          </label>
-          <label>
-            Path Output QR
-            <input
-              type="text"
-              id="generatePath"
-              placeholder="/public/coupons/qr/BAT"
-              required
-              readonly
-            />
-          </label>
-          <label>
-            Path Icon (opsional)
-            <input type="text" id="iconPath" placeholder="assets/icon.png" />
-          </label>
-          <label>
-            Warna Gradien (Awal)
-            <input type="color" id="colorStart" value="#000000" />
-          </label>
-          <label>
-            Warna Gradien (Akhir)
-            <input type="color" id="colorEnd" value="#ff0000" />
-          </label>
-          <label>
-            Style
-            <select id="style">
-              <option value="classic">Classic</option>
-              <option value="rounded">Rounded</option>
-              <option value="wave">Wave</option>
-              <option value="stain">Stain</option>
-              <option value="batik">Batik</option>
-              <option value="diamond">Diamond</option>
-              <option value="fluid">Fluid</option>
-            </select>
-          </label>
-          <label class="wide">
-            Preview Content
-            <input type="text" id="previewContent" placeholder="SAMPLECODE123" />
-          </label>
-          <div class="form-actions">
-            <button type="button" id="previewQrBtn" class="btn">
-              Preview QR
-            </button>
-            <button type="button" id="generateQrBtn" class="btn primary">
-              Generate Bulk
-            </button>
-            <button type="button" id="listQrOutputBtn" class="btn">
-              List Output
-            </button>
-            <button type="button" id="downloadQrZipBtn" class="btn secondary">
-              Download ZIP
-            </button>
-          </div>
-        </form>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/assets/shared.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const jobTracker = new JobTracker('#activeJobs');
+  jobTracker.loadActive();
 
-        <div class="preview-block">
-          <h3>QR Preview</h3>
-          <img id="qrPreviewImage" alt="QR Preview" class="preview-image" />
-        </div>
+  // ── Socket status label ──
+  socketManager.on('job:progress', () => {});
+  const updateLabel = () => {
+    const label = $('.nav-status .status-label');
+    if (label) label.textContent = socketManager.connected ? 'Connected' : 'Disconnected';
+  };
+  setInterval(updateLabel, 1000);
 
-        <div class="results">
-          <h3>Output Directory</h3>
-          <div class="columns">
-            <div>
-              <h4>Folders</h4>
-              <ul id="qrFolders" class="list"></ul>
-            </div>
-            <div>
-              <h4>Files</h4>
-              <ul id="qrFiles" class="list"></ul>
-            </div>
-          </div>
-          <div class="history-block">
-            <h4>Riwayat Project QR</h4>
-            <ul id="qrHistory" class="list history-list"></ul>
-          </div>
-        </div>
-      </section>
+  // ── Load CSV folders ──
+  async function loadCsvFolders() {
+    try {
+      const res = await apiFetch('/api/coupon/folders/csv');
+      const folders = Array.isArray(res) ? res : (res?.data ?? []);
+      const container = $('#csvFolderList');
+      if (!folders?.length) { container.innerHTML = '<p class="text-dim text-sm">No CSV folders found</p>'; return; }
+      container.innerHTML = folders.map(f =>
+        `<div class="folder-card">
+          <div class="name">${f.name}</div>
+          <div class="count">${f.fileCount} file(s)</div>
+        </div>`
+      ).join('');
+    } catch (e) { toast('Failed to load CSV folders: ' + e.message, 'error'); }
+  }
 
-      <section class="card" id="post-process">
-        <h2>Post-Process QR ke Background</h2>
-        <div class="interactive-grid">
-          <form id="mergeForm" class="form-grid">
-            <label class="wide">
-              Project (belum post-process)
-              <select id="postProcessProjectSelect">
-                <option value="">Pilih project...</option>
-              </select>
-            </label>
-            <label>
-              Project Path (untuk bulk)
-              <input
-                type="text"
-                id="projectPath"
-                placeholder="/public/coupons/projects/BAT/"
-                required
-              />
-            </label>
-            <label>
-              Background Path
-              <input
-                type="text"
-                id="backgroundPath"
-                placeholder="/public/assets/backgrounds/sample.png"
-                required
-              />
-            </label>
-            <label>
-              QR Source Path
-              <input
-                type="text"
-                id="qrSourcePath"
-                placeholder="/public/coupons/qr/BAT"
-                required
-                readonly
-              />
-            </label>
-            <label>
-              Target Save Path
-              <input
-                type="text"
-                id="qrTargetPath"
-                placeholder="/public/coupons/post-process/BAT"
-                required
-                readonly
-              />
-            </label>
-            <label>
-              Overlay Width
-              <input type="number" id="overlayWidth" value="200" />
-            </label>
-            <label>
-              Overlay Height
-              <input type="number" id="overlayHeight" value="200" />
-            </label>
-            <label>
-              Overlay X
-              <input type="number" id="overlayX" value="50" />
-            </label>
-            <label>
-              Overlay Y
-              <input type="number" id="overlayY" value="50" />
-            </label>
-            <label>
-              Overlay Top Radius
-              <input type="number" id="overlayRadius" value="0" />
-            </label>
-            <label>
-              Text Value
-              <input type="text" id="textValue" value="SAMPLE" />
-            </label>
-            <label>
-              Text Size
-              <input type="number" id="textSize" value="24" />
-            </label>
-            <label>
-              Text X
-              <input type="number" id="textX" value="100" />
-            </label>
-            <label>
-              Text Y
-              <input type="number" id="textY" value="100" />
-            </label>
-            <label>
-              Text Color
-              <input type="color" id="textColor" value="#ffffff" />
-            </label>
-            <label>
-              Font Family
-              <input type="text" id="textFont" value="Arial" />
-            </label>
-            <div class="form-actions">
-              <button type="button" id="loadBackgroundBtn" class="btn">
-                Load Background
-              </button>
-              <button type="button" id="mergePreviewBtn" class="btn">
-                Preview Merge
-              </button>
-              <button type="button" id="postProcessBulkBtn" class="btn primary">
-                Generate Bulk Merge
-              </button>
-            </div>
-          </form>
+  // ── Load QR folders ──
+  async function loadQrFolders() {
+    try {
+      const res = await apiFetch('/api/coupon/folders/qr');
+      const folders = Array.isArray(res) ? res : (res?.data ?? []);
+      const container = $('#qrFolderList');
+      if (!folders?.length) { container.innerHTML = '<p class="text-dim text-sm">No QR folders found</p>'; return; }
+      container.innerHTML = folders.map(f =>
+        `<div class="folder-card">
+          <div class="name">${f.name}</div>
+          <div class="count">${f.fileCount} file(s)</div>
+        </div>`
+      ).join('');
+    } catch (e) { toast('Failed to load QR folders: ' + e.message, 'error'); }
+  }
 
-          <div class="interactive-preview">
-            <h3>Penempatan Overlay</h3>
-            <div class="canvas-wrapper" id="canvasWrapper">
-              <img id="backgroundPreview" alt="Background Preview" />
-              <div id="qrOverlay" class="overlay" tabindex="0">
-                <img id="qrOverlayImage" alt="QR Overlay" />
-                <span id="qrOverlayLabel"></span>
-                <div class="resize-handle" id="resizeHandle"></div>
-              </div>
-              <span id="textPreview" class="text-preview">SAMPLE</span>
-            </div>
-            <p class="hint">
-              Drag kotak QR untuk menggeser posisi, gunakan handle di sudut kanan
-              bawah untuk mengubah ukuran. Nilai koordinat otomatis diperbarui ke
-              formulir.
-            </p>
-            <div class="preview-block">
-              <h4>Merge Preview</h4>
-              <img id="mergePreviewImage" class="preview-image" alt="Merge Preview" />
-            </div>
-            <div class="history-block">
-              <h4>Riwayat Project Post-Process</h4>
-              <ul id="postHistory" class="list history-list"></ul>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
+  // ── Load project overview ──
+  async function loadOverview() {
+    try {
+      const res = await apiFetch('/api/coupon/projects/overview');
+      const data = res?.data ?? res;
 
-    <footer class="page-footer">
-      <small>
-        Dibangun untuk mempercepat proses generate kode &amp; QR di lingkungan
-        internal. Gunakan dengan bijak.
-      </small>
-    </footer>
+      // Pending QR
+      const pendingQrList = $('#pendingQrList');
+      const pendingQr = data?.couponsWithoutQr || [];
+      if (!pendingQr.length) {
+        pendingQrList.innerHTML = '<li class="text-dim">All projects have QR codes</li>';
+      } else {
+        pendingQrList.innerHTML = pendingQr.map(item =>
+          `<li><span>${item.name} (${item.pendingCount} files)</span>
+           <a href="/generate-qr.html" class="btn small primary">Generate</a></li>`
+        ).join('');
+      }
 
-    <script src="./assets/app.js" type="module"></script>
-  </body>
+      // Pending Post-Process
+      const pendingPostList = $('#pendingPostList');
+      const pendingPost = data?.qrWithoutPostProcess || [];
+      if (!pendingPost.length) {
+        pendingPostList.innerHTML = '<li class="text-dim">No projects pending post-process</li>';
+      } else {
+        pendingPostList.innerHTML = pendingPost.map(item =>
+          `<li><span>${item.name} (${item.pendingCount} folders)</span>
+           <a href="/qr-background.html" class="btn small primary">Process</a></li>`
+        ).join('');
+      }
+
+      // History
+      const couponHistory = $('#couponHistory');
+      const coupons = data?.history?.coupons || [];
+      couponHistory.innerHTML = !coupons.length
+        ? '<li class="text-dim">No history</li>'
+        : coupons.map(item =>
+          `<li><span>${item.name}</span>
+           <button class="btn small" onclick="window.open('/api/coupon/downloadAll/${encodeURIComponent(item.name)}')">Download</button></li>`
+        ).join('');
+
+      const qrHistory = $('#qrHistory');
+      const qrs = data?.history?.qr || [];
+      qrHistory.innerHTML = !qrs.length
+        ? '<li class="text-dim">No history</li>'
+        : qrs.map(item =>
+          `<li><span>${item.name}</span>
+           <button class="btn small" onclick="window.open('/api/coupon/qr/download?generatePath=${encodeURIComponent(item.qrPath)}')">Download</button></li>`
+        ).join('');
+
+    } catch (e) { toast('Failed to load overview: ' + e.message, 'error'); }
+  }
+
+  // ── Bind refresh buttons ──
+  $('#refreshCsv').addEventListener('click', loadCsvFolders);
+  $('#refreshQr').addEventListener('click', loadQrFolders);
+  $('#refreshOverview').addEventListener('click', loadOverview);
+
+  // ── Initial load ──
+  loadCsvFolders();
+  loadQrFolders();
+  loadOverview();
+});
+</script>
+</body>
 </html>

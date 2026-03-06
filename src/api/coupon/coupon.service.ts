@@ -24,6 +24,7 @@ import { Queue } from 'bull';
 import { InjectQueue } from '@nestjs/bull';
 import { basename, join, resolve } from 'node:path';
 import { HelperService } from '@common/helper/helper.service';
+import { QrStylingService } from '@common/helper/qr-styling.service';
 
 const projectRoot = appRootPath.path || appRootPath.toString();
 let csvFileNameCounter = 0;
@@ -54,6 +55,7 @@ export class CouponService {
     private mergeImageQrQueue: Queue<PostProcessQrDTO>,
     private readonly couponDbService: CouponDbService,
     private readonly helperService: HelperService,
+    private readonly qrStylingService: QrStylingService,
   ) {
     this.couponModels = this.couponDbService.getModels();
   }
@@ -425,6 +427,33 @@ export class CouponService {
   }
 
   async generateQrPreviewImage(param: QrPreviewDTO) {
+    // New qr-code-styling path
+    if (param.qrOptions) {
+      const dataUrl = await this.qrStylingService.renderToDataUrl({
+        data: param.content,
+        width: param.qrOptions.width,
+        height: param.qrOptions.height,
+        margin: param.qrOptions.margin,
+        dotsType: param.qrOptions.dotsType as any,
+        dotsColor: param.qrOptions.dotsColor,
+        dotsGradient: param.qrOptions.dotsGradient as any,
+        cornersSquareType: param.qrOptions.cornersSquareType as any,
+        cornersSquareColor: param.qrOptions.cornersSquareColor,
+        cornersSquareGradient: param.qrOptions.cornersSquareGradient as any,
+        cornersDotType: param.qrOptions.cornersDotType as any,
+        cornersDotColor: param.qrOptions.cornersDotColor,
+        cornersDotGradient: param.qrOptions.cornersDotGradient as any,
+        backgroundColor: param.qrOptions.backgroundColor,
+        backgroundGradient: param.qrOptions.backgroundGradient as any,
+        shape: param.qrOptions.shape,
+        errorCorrectionLevel: param.qrOptions.errorCorrectionLevel,
+        image: param.qrOptions.imagePath,
+        imageSize: param.qrOptions.imageSize,
+      });
+      return { dataUrl };
+    }
+
+    // Legacy fallback with HelperService
     const rawRange = Array.isArray(param.colorRange) ? param.colorRange : [];
     if (rawRange.length < 2) {
       throw new BadRequestException('colorRange must contain two colors');
@@ -435,7 +464,7 @@ export class CouponService {
     ];
     const dataUrl = await this.helperService.generateQrPreview({
       content: param.content,
-      style: param.style,
+      style: (param.style as any) || 'classic',
       colorRange: [colorRange[0], colorRange[1]],
       icon: param.iconPath,
     });
@@ -634,5 +663,124 @@ export class CouponService {
       }
     });
     return true;
+  }
+
+  // ─── Folder & File Listing Methods ───────────────────────
+
+  async listCsvFolders() {
+    this.ensureDirectory(this.couponsBasePath);
+    const folders = this.listDirectories(this.couponsBasePath);
+    const folderDetails = folders.map((name) => {
+      const dirPath = join(this.couponsBasePath, name);
+      const csvFiles = fs
+        .readdirSync(dirPath)
+        .filter((f) => f.toLowerCase().endsWith('.csv'));
+      return {
+        name,
+        path: this.toPublicPath('csv', name),
+        fileCount: csvFiles.length,
+      };
+    });
+    return folderDetails;
+  }
+
+  /** Read the first data line from the first CSV file in a folder */
+  async getCsvSampleLine(folder: string) {
+    if (!folder) return { sample: '' };
+    const normalized = folder.startsWith('/') ? folder.slice(1) : folder;
+    const dirPath = resolve(projectRoot, normalized);
+    if (!fs.existsSync(dirPath)) return { sample: '' };
+    const csvFiles = fs
+      .readdirSync(dirPath)
+      .filter((f) => f.toLowerCase().endsWith('.csv'))
+      .sort();
+    if (!csvFiles.length) return { sample: '' };
+    const content = fs.readFileSync(join(dirPath, csvFiles[0]), 'utf8');
+    const lines = content.split(/\r?\n/).filter((l) => l.trim());
+    // Skip header line if it says "coupon"
+    const firstData = lines.find((l) => l.trim().toLowerCase() !== 'coupon');
+    return { sample: firstData?.trim() || '' };
+  }
+
+  /** Get the first QR image file path from a QR folder */
+  async getQrSampleFile(folder: string) {
+    if (!folder) return { path: '', publicUrl: '' };
+    const normalized = folder.startsWith('/') ? folder.slice(1) : folder;
+    const dirPath = resolve(projectRoot, normalized);
+    if (!fs.existsSync(dirPath)) return { path: '', publicUrl: '' };
+    // Strip 'public/' prefix for URL since ServeStaticModule serves from public/
+    const urlBase = normalized.startsWith('public/')
+      ? normalized.slice('public'.length)
+      : `/${normalized}`;
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    // Check flat files first
+    const flatPng = entries.find(
+      (e) => e.isFile() && e.name.toLowerCase().endsWith('.png'),
+    );
+    if (flatPng) {
+      const rel = `${folder}/${flatPng.name}`;
+      return { path: rel, publicUrl: `${urlBase}/${flatPng.name}` };
+    }
+    // Check subdirectories
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const subDir = join(dirPath, entry.name);
+      const subFiles = fs
+        .readdirSync(subDir)
+        .filter((f) => f.toLowerCase().endsWith('.png'));
+      if (subFiles.length) {
+        const rel = `${folder}/${entry.name}/${subFiles[0]}`;
+        return {
+          path: rel,
+          publicUrl: `${urlBase}/${entry.name}/${subFiles[0]}`,
+        };
+      }
+    }
+    return { path: '', publicUrl: '' };
+  }
+
+  async listQrFolders() {
+    this.ensureDirectory(this.qrBasePath);
+    const folders = this.listDirectories(this.qrBasePath);
+    return folders.map((name) => {
+      const dirPath = join(this.qrBasePath, name);
+      let fileCount = 0;
+      try {
+        const entries = fs.readdirSync(dirPath);
+        // Count files recursively in subdirectories
+        for (const entry of entries) {
+          const entryPath = join(dirPath, entry);
+          if (fs.lstatSync(entryPath).isDirectory()) {
+            fileCount += fs
+              .readdirSync(entryPath)
+              .filter((f) => f.toLowerCase().endsWith('.png')).length;
+          } else if (entry.toLowerCase().endsWith('.png')) {
+            fileCount++;
+          }
+        }
+      } catch {
+        // directory not accessible
+      }
+      return {
+        name,
+        path: this.toPublicPath('qr', name),
+        fileCount,
+      };
+    });
+  }
+
+  async listUploadedFiles(type: 'logos' | 'backgrounds') {
+    const dir = join(projectRoot, 'public', 'assets', type);
+    if (!fs.existsSync(dir)) {
+      return [];
+    }
+    return fs
+      .readdirSync(dir)
+      .filter((f) => /\.(png|jpg|jpeg|svg|webp)$/i.test(f))
+      .map((f) => ({
+        filename: f,
+        path: `/assets/${type}/${f}`,
+        fullPath: `public/assets/${type}/${f}`,
+      }));
   }
 }

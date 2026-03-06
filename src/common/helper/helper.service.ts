@@ -131,8 +131,9 @@ export class HelperService {
     pathSave: string;
     filename: string;
   }) {
-    const baseRoot = `${appRoot}/../`;
-    const targetDir = resolve(`${baseRoot}/${pathSave}`);
+    const baseRoot = appRoot || process.cwd();
+    const normalized = pathSave.startsWith('/') ? pathSave.slice(1) : pathSave;
+    const targetDir = resolve(baseRoot, normalized);
     if (!existsSync(targetDir)) {
       mkdirSync(targetDir, { recursive: true });
     }

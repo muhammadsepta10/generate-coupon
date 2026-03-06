@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generate QR – Coupon & QR Utilities</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/shared.css" />
+  <style>
+    .preview-section { text-align: center; }
+    .preview-section img { margin-top: 0.5rem; }
+    .option-group { margin-bottom: 1rem; }
+    .option-group h3 { margin-bottom: 0.5rem; }
+    .color-row { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; }
+    .gradient-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; margin-bottom: 0.5rem; }
+    .gradient-fields { display: none; }
+    .gradient-fields.show { display: block; }
+    .dot-type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; }
+    .dot-type-option { background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); padding: 0.5rem; text-align: center; cursor: pointer; font-size: 0.75rem; transition: all 0.2s; }
+    .dot-type-option:hover { border-color: var(--accent); }
+    .dot-type-option.selected { border-color: var(--accent); background: var(--accent-dim); }
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--card-border); margin-bottom: 1rem; }
+    .tab { padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; font-size: 0.85rem; color: var(--text-dim); }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+  <a class="nav-brand" href="/">RDBX Tools</a>
+  <ul class="nav-links">
+    <li><a href="/">Dashboard</a></li>
+    <li><a href="/generate-codes.html">Generate Codes</a></li>
+    <li><a href="/generate-qr.html">Generate QR</a></li>
+    <li><a href="/qr-background.html">QR Background</a></li>
+  </ul>
+  <div class="nav-status">
+    <div class="dot"></div>
+    <span class="status-label">Disconnected</span>
+  </div>
+</nav>
+
+<div class="page-container">
+  <h1 class="page-title"><span class="icon">📱</span> Generate QR Codes</h1>
+
+  <div class="two-col">
+    <!-- Left: Options -->
+    <div>
+      <!-- Source Selection -->
+      <div class="card">
+        <h2>📁 Source CSV Folder</h2>
+        <div id="csvFolders" class="folder-grid" style="margin-bottom:0.75rem">
+          <p class="text-dim text-sm">Loading...</p>
+        </div>
+        <div class="form-grid">
+          <label>
+            Coupons Path
+            <input type="text" id="couponsPath" placeholder="Auto-filled from selection" />
+          </label>
+          <label>
+            QR Output Path
+            <input type="text" id="generatePath" placeholder="Auto-filled from selection" />
+          </label>
+        </div>
+      </div>
+
+      <!-- QR Styling Options -->
+      <div class="card">
+        <h2>🎨 QR Styling Options</h2>
+
+        <div class="tabs">
+          <div class="tab active" data-tab="dots">Dots</div>
+          <div class="tab" data-tab="corners">Corners</div>
+          <div class="tab" data-tab="background">Background</div>
+          <div class="tab" data-tab="logo">Logo</div>
+          <div class="tab" data-tab="general">General</div>
+        </div>
+
+        <!-- Dots Tab -->
+        <div class="tab-panel active" id="tab-dots">
+          <div class="option-group">
+            <h3>Dot Style</h3>
+            <div class="dot-type-grid" id="dotsTypeGrid">
+              <div class="dot-type-option selected" data-value="square">Square</div>
+              <div class="dot-type-option" data-value="dots">Dots</div>
+              <div class="dot-type-option" data-value="rounded">Rounded</div>
+              <div class="dot-type-option" data-value="extra-rounded">Extra Rounded</div>
+              <div class="dot-type-option" data-value="classy">Classy</div>
+              <div class="dot-type-option" data-value="classy-rounded">Classy Rounded</div>
+            </div>
+          </div>
+          <div class="option-group">
+            <div class="gradient-toggle">
+              <input type="checkbox" id="dotsGradientToggle" />
+              <label for="dotsGradientToggle">Use Gradient</label>
+            </div>
+            <div class="color-row" id="dotsColorSolid">
+              <label>Color <input type="color" id="dotsColor" value="#000000" /></label>
+            </div>
+            <div class="gradient-fields" id="dotsGradientFields">
+              <div class="form-grid">
+                <label>Type
+                  <select id="dotsGradientType">
+                    <option value="linear">Linear</option>
+                    <option value="radial">Radial</option>
+                  </select>
+                </label>
+                <label>Rotation (deg) <input type="number" id="dotsGradientRotation" value="0" min="0" max="360" /></label>
+                <label>Color 1 <input type="color" id="dotsGradientColor1" value="#6c63ff" /></label>
+                <label>Color 2 <input type="color" id="dotsGradientColor2" value="#22c55e" /></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Corners Tab -->
+        <div class="tab-panel" id="tab-corners">
+          <div class="option-group">
+            <h3>Corner Square Style</h3>
+            <div class="dot-type-grid" id="cornerSquareTypeGrid">
+              <div class="dot-type-option selected" data-value="square">Square</div>
+              <div class="dot-type-option" data-value="dot">Dot</div>
+              <div class="dot-type-option" data-value="extra-rounded">Extra Rounded</div>
+            </div>
+          </div>
+          <div class="option-group">
+            <div class="gradient-toggle">
+              <input type="checkbox" id="cornerSquareGradientToggle" />
+              <label for="cornerSquareGradientToggle">Use Gradient</label>
+            </div>
+            <div class="color-row" id="cornerSquareColorSolid">
+              <label>Color <input type="color" id="cornerSquareColor" value="#000000" /></label>
+            </div>
+            <div class="gradient-fields" id="cornerSquareGradientFields">
+              <div class="form-grid">
+                <label>Type
+                  <select id="cornerSquareGradientType">
+                    <option value="linear">Linear</option>
+                    <option value="radial">Radial</option>
+                  </select>
+                </label>
+                <label>Rotation (deg) <input type="number" id="cornerSquareGradientRotation" value="0" /></label>
+                <label>Color 1 <input type="color" id="cornerSquareGradientColor1" value="#6c63ff" /></label>
+                <label>Color 2 <input type="color" id="cornerSquareGradientColor2" value="#22c55e" /></label>
+              </div>
+            </div>
+          </div>
+
+          <hr style="border-color: var(--card-border); margin: 1rem 0;" />
+
+          <div class="option-group">
+            <h3>Corner Dot Style</h3>
+            <div class="dot-type-grid" id="cornerDotTypeGrid">
+              <div class="dot-type-option selected" data-value="square">Square</div>
+              <div class="dot-type-option" data-value="dot">Dot</div>
+            </div>
+          </div>
+          <div class="option-group">
+            <div class="gradient-toggle">
+              <input type="checkbox" id="cornerDotGradientToggle" />
+              <label for="cornerDotGradientToggle">Use Gradient</label>
+            </div>
+            <div class="color-row" id="cornerDotColorSolid">
+              <label>Color <input type="color" id="cornerDotColor" value="#000000" /></label>
+            </div>
+            <div class="gradient-fields" id="cornerDotGradientFields">
+              <div class="form-grid">
+                <label>Type
+                  <select id="cornerDotGradientType">
+                    <option value="linear">Linear</option>
+                    <option value="radial">Radial</option>
+                  </select>
+                </label>
+                <label>Rotation (deg) <input type="number" id="cornerDotGradientRotation" value="0" /></label>
+                <label>Color 1 <input type="color" id="cornerDotGradientColor1" value="#6c63ff" /></label>
+                <label>Color 2 <input type="color" id="cornerDotGradientColor2" value="#22c55e" /></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Background Tab -->
+        <div class="tab-panel" id="tab-background">
+          <div class="option-group">
+            <div class="gradient-toggle">
+              <input type="checkbox" id="bgGradientToggle" />
+              <label for="bgGradientToggle">Use Gradient</label>
+            </div>
+            <div class="color-row" id="bgColorSolid">
+              <label>Background Color <input type="color" id="bgColor" value="#ffffff" /></label>
+            </div>
+            <div class="gradient-fields" id="bgGradientFields">
+              <div class="form-grid">
+                <label>Type
+                  <select id="bgGradientType">
+                    <option value="linear">Linear</option>
+                    <option value="radial">Radial</option>
+                  </select>
+                </label>
+                <label>Rotation (deg) <input type="number" id="bgGradientRotation" value="0" /></label>
+                <label>Color 1 <input type="color" id="bgGradientColor1" value="#ffffff" /></label>
+                <label>Color 2 <input type="color" id="bgGradientColor2" value="#e2e8f0" /></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Logo Tab -->
+        <div class="tab-panel" id="tab-logo">
+          <div class="option-group">
+            <h3>Logo Image</h3>
+            <div class="form-grid">
+              <label class="wide">
+                Upload Logo
+                <input type="file" id="logoUpload" accept="image/*" />
+              </label>
+              <label>
+                Or select existing
+                <select id="logoSelect">
+                  <option value="">None</option>
+                </select>
+              </label>
+              <label>
+                Logo Size (ratio 0-1)
+                <input type="number" id="logoSize" value="0.4" min="0" max="1" step="0.05" />
+              </label>
+            </div>
+            <p class="text-xs text-dim mt-1">Current: <span id="logoCurrentPath">None</span></p>
+          </div>
+        </div>
+
+        <!-- General Tab -->
+        <div class="tab-panel" id="tab-general">
+          <div class="form-grid">
+            <label>
+              Width (px)
+              <input type="number" id="qrWidth" value="300" min="50" max="2000" />
+            </label>
+            <label>
+              Height (px)
+              <input type="number" id="qrHeight" value="300" min="50" max="2000" />
+            </label>
+            <label>
+              Margin (px)
+              <input type="number" id="qrMargin" value="10" min="0" max="100" />
+            </label>
+            <label>
+              Error Correction
+              <select id="qrErrorCorrection">
+                <option value="L">Low (L)</option>
+                <option value="M" selected>Medium (M)</option>
+                <option value="Q">Quartile (Q)</option>
+                <option value="H">High (H)</option>
+              </select>
+            </label>
+            <label>
+              Shape
+              <select id="qrShape">
+                <option value="square" selected>Square</option>
+                <option value="circle">Circle</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legacy Options (backward compat) -->
+      <div class="card">
+        <h2>🔧 Legacy Options (optional fallback)</h2>
+        <div class="form-grid">
+          <label>
+            Style
+            <select id="legacyStyle">
+              <option value="square">Square</option>
+              <option value="dot">Dot</option>
+            </select>
+          </label>
+          <label>Color Start <input type="color" id="legacyColorStart" value="#000000" /></label>
+          <label>Color End <input type="color" id="legacyColorEnd" value="#000000" /></label>
+          <label>Icon Path <input type="text" id="legacyIconPath" placeholder="e.g. public/assets/logos/icon.png" /></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Preview & Actions -->
+    <div>
+      <div class="card preview-section">
+        <h2>🔍 QR Preview</h2>
+        <div class="form-grid" style="margin-bottom:0.75rem;">
+          <label class="wide">
+            Preview Content
+            <input type="text" id="previewContent" value="" placeholder="Auto-filled from first CSV line" />
+          </label>
+        </div>
+        <p class="text-xs text-dim" id="previewStatus">Change any QR setting to auto-preview</p>
+        <div style="margin-top:0.5rem;">
+          <img id="qrPreviewImage" class="preview-image" src="" alt="QR Preview" style="display:none;" />
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>🚀 Bulk Generate</h2>
+        <div class="form-actions">
+          <button class="btn primary" id="bulkGenerateBtn">Start Bulk QR Generation</button>
+          <button class="btn" id="downloadQrBtn">Download QR ZIP</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Job Progress</h2>
+        <div id="jobProgress" class="jobs-grid">
+          <div class="jobs-empty">No active QR generation jobs</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>QR Output Files
+          <button class="btn small" id="refreshQrOutput" style="margin-left:auto">Refresh</button>
+        </h2>
+        <div class="two-col">
+          <div>
+            <h3>Folders</h3>
+            <ul class="list" id="qrFolders"></ul>
+          </div>
+          <div>
+            <h3>Files</h3>
+            <ul class="list" id="qrFiles"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/assets/shared.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const jobTracker = new JobTracker('#jobProgress', { queueFilter: ['bulk-qr', 'generate-qr'] });
+  jobTracker.loadActive();
+  let selectedCsvFolder = null;
+  let logoPath = '';
+  let _previewTimer = null;
+  let _previewInFlight = false;
+
+  // ── Tab switching ──
+  $$('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      $$('.tab').forEach(t => t.classList.remove('active'));
+      $$('.tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      $(`#tab-${tab.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  // ── Gradient toggles ──
+  function setupGradientToggle(toggleId, solidId, gradientId) {
+    const toggle = $(`#${toggleId}`);
+    const solid = $(`#${solidId}`);
+    const gradient = $(`#${gradientId}`);
+    toggle.addEventListener('change', () => {
+      solid.style.display = toggle.checked ? 'none' : 'flex';
+      gradient.classList.toggle('show', toggle.checked);
+    });
+  }
+  setupGradientToggle('dotsGradientToggle', 'dotsColorSolid', 'dotsGradientFields');
+  setupGradientToggle('cornerSquareGradientToggle', 'cornerSquareColorSolid', 'cornerSquareGradientFields');
+  setupGradientToggle('cornerDotGradientToggle', 'cornerDotColorSolid', 'cornerDotGradientFields');
+  setupGradientToggle('bgGradientToggle', 'bgColorSolid', 'bgGradientFields');
+
+  // ── Type grid selection ──
+  function setupTypeGrid(gridId) {
+    const grid = $(`#${gridId}`);
+    grid.addEventListener('click', (e) => {
+      const opt = e.target.closest('.dot-type-option');
+      if (!opt) return;
+      $$('.dot-type-option', grid).forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+    });
+  }
+  setupTypeGrid('dotsTypeGrid');
+  setupTypeGrid('cornerSquareTypeGrid');
+  setupTypeGrid('cornerDotTypeGrid');
+
+  // ── Load CSV folders ──
+  async function loadCsvFolders() {
+    try {
+      const folders = await apiFetch('/api/coupon/folders/csv').then(res=>res.data)
+      const container = $('#csvFolders');
+      if (!folders?.length) {
+        container.innerHTML = '<p class="text-dim text-sm">No CSV folders found</p>';
+        return;
+      }
+      container.innerHTML = folders.map(f =>
+        `<div class="folder-card" data-name="${f.name}" data-path="${f.path}">
+          <div class="name">${f.name}</div>
+          <div class="count">${f.fileCount} file(s)</div>
+        </div>`
+      ).join('');
+
+      // Click to select
+      $$('.folder-card', container).forEach(card => {
+        card.addEventListener('click', async () => {
+          $$('.folder-card', container).forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedCsvFolder = { name: card.dataset.name, path: card.dataset.path };
+          $('#couponsPath').value = card.dataset.path;
+          // Auto-fill QR output path
+          const qrPath = card.dataset.path.replace('/csv/', '/qr/');
+          $('#generatePath').value = qrPath;
+          // Fetch first line from first CSV for preview content
+          try {
+            const sampleRes = await apiFetch(`/api/coupon/csv/sample?folder=${encodeURIComponent(card.dataset.path)}`);
+            const sample = sampleRes?.data?.sample ?? sampleRes?.sample ?? '';
+            if (sample) {
+              $('#previewContent').value = sample;
+              scheduleAutoPreview();
+            }
+          } catch(e) { /* silent */ }
+        });
+      });
+    } catch (e) { toast('Failed to load CSV folders: ' + e.message, 'error'); }
+  }
+
+  // ── Load logos list ──
+  async function loadLogos() {
+    try {
+      const res = await apiFetch('/api/coupon/files/logos');
+      const logos = Array.isArray(res) ? res : (res?.data ?? []);
+      const select = $('#logoSelect');
+      select.innerHTML = '<option value="">None</option>';
+      if (logos?.length) {
+        logos.forEach(l => {
+          const opt = document.createElement('option');
+          opt.value = l.fullPath || l.path || l;
+          opt.textContent = l.filename || l.name || l;
+          select.appendChild(opt);
+        });
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  // ── Logo upload ──
+  $('#logoUpload').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const result = await apiFetch('/api/coupon/upload/logo', {
+        method: 'POST',
+        body: formData,
+      }).then(res => res.data);
+      logoPath = result.fullPath || result.path;
+      $('#logoCurrentPath').textContent = logoPath;
+      toast('Logo uploaded: ' + result.filename, 'success');
+      loadLogos();
+      scheduleAutoPreview();
+    } catch (err) { toast('Upload failed: ' + err.message, 'error'); }
+  });
+
+  $('#logoSelect').addEventListener('change', (e) => {
+    logoPath = e.target.value;
+    $('#logoCurrentPath').textContent = logoPath || 'None';
+  });
+
+  // ── Build QR options object ──
+  function buildQrOptions() {
+    const getSelectedType = (gridId) => {
+      const sel = $(`#${gridId} .dot-type-option.selected`);
+      return sel ? sel.dataset.value : 'square';
+    };
+
+    const getGradientOrColor = (prefix) => {
+      const isGradient = $(`#${prefix}GradientToggle`)?.checked;
+      if (isGradient) {
+        return {
+          gradient: {
+            type: $(`#${prefix}GradientType`).value,
+            rotation: Number($(`#${prefix}GradientRotation`).value) || 0,
+            colorStops: [
+              { offset: 0, color: $(`#${prefix}GradientColor1`).value },
+              { offset: 1, color: $(`#${prefix}GradientColor2`).value },
+            ],
+          },
+        };
+      }
+      const colorInput = $(`#${prefix}Color`);
+      return colorInput ? { color: colorInput.value } : {};
+    };
+
+    const opts = {
+      width: Number($('#qrWidth').value) || 300,
+      height: Number($('#qrHeight').value) || 300,
+      margin: Number($('#qrMargin').value) ?? 10,
+      shape: $('#qrShape').value,
+      errorCorrectionLevel: $('#qrErrorCorrection').value,
+      dotsType: getSelectedType('dotsTypeGrid'),
+      cornersSquareType: getSelectedType('cornerSquareTypeGrid'),
+      cornersDotType: getSelectedType('cornerDotTypeGrid'),
+      ...prefixResult('dots', getGradientOrColor('dots')),
+      ...prefixResult('cornersSquare', getGradientOrColor('cornerSquare')),
+      ...prefixResult('cornersDot', getGradientOrColor('cornerDot')),
+      ...prefixResult('bg', getGradientOrColor('bg'), true),
+    };
+
+    if (logoPath) {
+      opts.imagePath = logoPath;
+      opts.imageSize = Number($('#logoSize').value) || 0.4;
+    }
+
+    return opts;
+  }
+
+  function prefixResult(prefix, result, isBg = false) {
+    const out = {};
+    if (isBg) {
+      if (result.color) out.backgroundColor = result.color;
+      if (result.gradient) out.backgroundGradient = result.gradient;
+    } else {
+      if (result.color) out[`${prefix}Color`] = result.color;
+      if (result.gradient) out[`${prefix}Gradient`] = result.gradient;
+    }
+    return out;
+  }
+
+  // ── Auto Preview (debounced) ──
+  function scheduleAutoPreview() {
+    if (_previewTimer) clearTimeout(_previewTimer);
+    _previewTimer = setTimeout(() => doAutoPreview(), 600);
+  }
+
+  async function doAutoPreview() {
+    if (_previewInFlight) return;
+    const content = $('#previewContent').value.trim() || 'SAMPLE';
+    const qrOptions = buildQrOptions();
+    _previewInFlight = true;
+    $('#previewStatus').textContent = 'Generating preview...';
+
+    try {
+      const res = await apiFetch('/api/coupon/preview/qr', {
+        method: 'POST',
+        body: JSON.stringify({ content, qrOptions }),
+      });
+      const result = res?.data ?? res;
+      if (result?.dataUrl) {
+        const img = $('#qrPreviewImage');
+        img.src = result.dataUrl;
+        img.style.display = 'block';
+        $('#previewStatus').textContent = 'Preview updated';
+      }
+    } catch (e) {
+      $('#previewStatus').textContent = 'Preview failed: ' + e.message;
+    } finally {
+      _previewInFlight = false;
+    }
+  }
+
+  // Listen to all QR option inputs for auto-preview
+  function bindAutoPreview() {
+    // All color, number, select, checkbox inputs in the QR styling card
+    const qrCard = $$('.card')[1]; // QR Styling Options card
+    if (qrCard) {
+      qrCard.addEventListener('input', scheduleAutoPreview);
+      qrCard.addEventListener('change', scheduleAutoPreview);
+    }
+    // Dot-type grid clicks
+    ['dotsTypeGrid', 'cornerSquareTypeGrid', 'cornerDotTypeGrid'].forEach(id => {
+      $(`#${id}`).addEventListener('click', () => setTimeout(scheduleAutoPreview, 50));
+    });
+    // Logo changes
+    $('#logoSelect').addEventListener('change', () => setTimeout(scheduleAutoPreview, 50));
+    // Preview content change
+    $('#previewContent').addEventListener('input', scheduleAutoPreview);
+    // General tab inputs
+    ['#qrWidth', '#qrHeight', '#qrMargin', '#qrErrorCorrection', '#qrShape'].forEach(sel => {
+      $(sel).addEventListener('change', scheduleAutoPreview);
+      $(sel).addEventListener('input', scheduleAutoPreview);
+    });
+  }
+
+  // ── Bulk Generate ──
+  $('#bulkGenerateBtn').addEventListener('click', async () => {
+    const couponsPath = $('#couponsPath').value.trim();
+    const generatePath = $('#generatePath').value.trim();
+    if (!couponsPath || !generatePath) {
+      toast('Select a CSV folder first', 'warn');
+      return;
+    }
+
+    const qrOptions = buildQrOptions();
+    const payload = {
+      couponsPath,
+      generatePath,
+      qrOptions,
+      // Legacy fallback fields
+      style: $('#legacyStyle').value,
+      colorRange: [$('#legacyColorStart').value, $('#legacyColorEnd').value],
+      iconPath: $('#legacyIconPath').value.trim() || undefined,
+    };
+
+    const btn = $('#bulkGenerateBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    try {
+      const result = await apiFetch('/api/coupon/bulk-qr', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }).then(res => res.data);
+      toast(`Bulk QR job queued (ID: ${result?.jobId ?? '-'})`, 'success');
+      loadQrOutputs();
+    } catch (e) {
+      toast('Bulk QR failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Start Bulk QR Generation';
+    }
+  });
+
+  // ── QR Output listing ──
+  async function loadQrOutputs() {
+    const generatePath = $('#generatePath').value.trim();
+    if (!generatePath) return;
+    try {
+      const result = await apiFetch(`/api/coupon/qr/list?generatePath=${encodeURIComponent(generatePath)}`).then(res => res.data);
+      const folderList = $('#qrFolders');
+      const fileList = $('#qrFiles');
+      folderList.innerHTML = (result.directories?.length)
+        ? result.directories.map(d => `<li>${d}</li>`).join('')
+        : '<li class="text-dim">No folders</li>';
+      fileList.innerHTML = (result.files?.length)
+        ? result.files.map(f => `<li>${f}</li>`).join('')
+        : '<li class="text-dim">No files</li>';
+    } catch (e) { toast('Failed to load QR outputs: ' + e.message, 'error'); }
+  }
+
+  $('#refreshQrOutput').addEventListener('click', loadQrOutputs);
+
+  // ── Download QR ZIP ──
+  $('#downloadQrBtn').addEventListener('click', () => {
+    const generatePath = $('#generatePath').value.trim();
+    if (!generatePath) { toast('Select a folder first', 'warn'); return; }
+    window.open(`/api/coupon/qr/download?generatePath=${encodeURIComponent(generatePath)}`);
+  });
+
+  // ── WebSocket events ──
+  socketManager.on('job:complete', (d) => {
+    if (d.queue === 'bulk-qr' || d.queue === 'generate-qr') {
+      toast('QR generation completed!', 'success');
+      loadQrOutputs();
+    }
+  });
+
+  // ── Init ──
+  loadCsvFolders();
+  loadLogos();
+  bindAutoPreview();
+  // Initial preview on page load
+  setTimeout(scheduleAutoPreview, 800);
+});
+</script>
+</body>
+</html>

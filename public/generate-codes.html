@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generate Codes – Coupon & QR Utilities</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/shared.css" />
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+  <a class="nav-brand" href="/">RDBX Tools</a>
+  <ul class="nav-links">
+    <li><a href="/">Dashboard</a></li>
+    <li><a href="/generate-codes.html">Generate Codes</a></li>
+    <li><a href="/generate-qr.html">Generate QR</a></li>
+    <li><a href="/qr-background.html">QR Background</a></li>
+  </ul>
+  <div class="nav-status">
+    <div class="dot"></div>
+    <span class="status-label">Disconnected</span>
+  </div>
+</nav>
+
+<div class="page-container">
+  <h1 class="page-title"><span class="icon">🔢</span> Generate Unique Codes</h1>
+
+  <div class="two-col">
+    <!-- Form -->
+    <div class="card">
+      <h2>Configuration</h2>
+      <form id="couponForm" class="form-grid">
+        <label>
+          Project *
+          <input type="text" id="project" required placeholder="e.g. BAT" />
+        </label>
+        <label>
+          Prefix
+          <input type="text" id="prefix" placeholder="e.g. BAT" />
+        </label>
+        <label>
+          Postfix
+          <input type="text" id="postfix" placeholder="e.g. 2025" />
+        </label>
+        <label>
+          Code Length
+          <input type="number" id="lengths" min="4" max="20" required value="10" />
+        </label>
+        <label>
+          Total Count
+          <input type="number" id="count" min="1" required value="100000" />
+        </label>
+        <label>
+          Character Set
+          <input type="text" id="char" placeholder="Default: 34678QWERTYUPADFGHJKLXCVNM" />
+        </label>
+        <fieldset class="wide">
+          <legend>Generation Type</legend>
+          <div class="flex gap-1 flex-wrap" style="padding-top:0.25rem">
+            <label style="flex-direction:row; gap:0.4rem; cursor:pointer; align-items:center">
+              <input type="radio" name="type" value="random" checked /> Random
+            </label>
+            <label style="flex-direction:row; gap:0.4rem; cursor:pointer; align-items:center">
+              <input type="radio" name="type" value="sequential" /> Sequential
+            </label>
+          </div>
+        </fieldset>
+        <div class="form-actions">
+          <button type="submit" class="btn primary" id="generateBtn">Generate Codes</button>
+          <button type="button" class="btn" id="downloadBtn">Download ZIP</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Status -->
+    <div>
+      <div class="card">
+        <h2>Job Progress</h2>
+        <div id="jobProgress" class="jobs-grid">
+          <div class="jobs-empty">Submit a job to see progress</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Generated Files
+          <button class="btn small" id="refreshFiles" style="margin-left:auto">Refresh</button>
+        </h2>
+        <ul class="list" id="couponFiles">
+          <li class="text-dim">Enter a project name and generate codes</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/assets/shared.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const jobTracker = new JobTracker('#jobProgress', { queueFilter: ['coupon', 'coupon2'] });
+  jobTracker.loadActive();
+
+  // ── Refresh file list ──
+  async function refreshFiles() {
+    const project = $('#project').value.trim();
+    if (!project) return;
+    try {
+      const res = await apiFetch(`/api/coupon/generated/${project.toUpperCase()}`)
+      const files = Array.isArray(res) ? res : (res?.data ?? []);
+      const list = $('#couponFiles');
+      if (!files?.length) {
+        list.innerHTML = '<li class="text-dim">No files yet</li>';
+        return;
+      }
+      list.innerHTML = files.map(f => `<li>${f}</li>`).join('');
+    } catch (e) {
+      toast('Failed to load files: ' + e.message, 'error');
+    }
+  }
+
+  // ── Submit generation ──
+  $('#couponForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const project = $('#project').value.trim();
+    const prefix = $('#prefix').value.trim();
+    const postfix = $('#postfix').value.trim();
+    const lengths = Number($('#lengths').value);
+    const count = Number($('#count').value);
+    const char = $('#char').value.trim();
+    const type = $$('input[name="type"]').find(i => i.checked)?.value;
+
+    if (!project) { toast('Project is required', 'error'); return; }
+
+    const btn = $('#generateBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    try {
+      const res = await apiFetch('/api/coupon/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          project, prefix, postfix, lengths, count,
+          char: char || undefined, type,
+        }),
+      })
+      const result = res?.data ?? res;
+      toast(`Job queued successfully (ID: ${result?.jobId ?? '-'})`, 'success');
+      refreshFiles();
+    } catch (e) {
+      toast('Failed to generate: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate Codes';
+    }
+  });
+
+  // ── Download ZIP ──
+  $('#downloadBtn').addEventListener('click', () => {
+    const project = $('#project').value.trim();
+    if (!project) { toast('Enter project name first', 'warn'); return; }
+    window.open(`/api/coupon/downloadAll/${project.toUpperCase()}`);
+  });
+
+  // ── Refresh ──
+  $('#refreshFiles').addEventListener('click', refreshFiles);
+
+  // ── Listen for coupon generation progress via WebSocket ──
+  socketManager.on('job:progress', (d) => {
+    if (d.queue === 'coupon2' || d.queue === 'coupon') {
+      // Also refresh file list periodically
+    }
+  });
+
+  socketManager.on('job:complete', (d) => {
+    if (d.queue === 'coupon2' || d.queue === 'coupon') {
+      toast('Code generation completed!', 'success');
+      refreshFiles();
+    }
+  });
+});
+</script>
+</body>
+</html>

@@ -1,5 +1,7 @@
 import { HttpAdapterHost, NestApplication, NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { WebModule } from './web.module';
+import { WorkerModule } from './worker.module';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as express from 'express';
@@ -12,8 +14,23 @@ import { AppConfigService } from '@common/config/app-config/app-config.service';
 import { BullMonitorExpress } from '@bull-monitor/express';
 import { BullAdapter } from '@bull-monitor/root/dist/bull-adapter';
 
-async function bootstrap() {
-  const app: NestApplication = await NestFactory.create(AppModule);
+/**
+ * APP_ROLE controls process separation:
+ *   "web"    → HTTP server + WebSocket gateway only (no processors)
+ *   "worker" → Bull queue processors only (no HTTP)
+ *   unset    → legacy all-in-one mode (AppModule)
+ */
+const APP_ROLE = process.env.APP_ROLE || '';
+
+async function bootstrapWorker() {
+  const app = await NestFactory.createApplicationContext(WorkerModule);
+  console.log('WORKER process started — processing Bull queues');
+  // Worker runs indefinitely consuming jobs; no HTTP listener needed.
+}
+
+async function bootstrapWeb() {
+  const RootModule = APP_ROLE === 'web' ? WebModule : AppModule;
+  const app: NestApplication = await NestFactory.create(RootModule);
   const configService = app.get(AppConfigService);
   const port = configService.PORT;
   const adapters: BullAdapter[] = [];
@@ -87,7 +104,15 @@ async function bootstrap() {
   const httpAdapterHost = app.get(HttpAdapterHost);
   app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost));
   await app.listen(port).then((v) => {
-    console.log('RUNNING ON PORT ', port);
+    console.log(
+      `${APP_ROLE ? 'WEB' : 'ALL-IN-ONE'} server running on port`,
+      port,
+    );
   });
 }
-bootstrap();
+
+if (APP_ROLE === 'worker') {
+  bootstrapWorker();
+} else {
+  bootstrapWeb();
+}

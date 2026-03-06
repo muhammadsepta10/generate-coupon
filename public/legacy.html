@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coupon & QR Utilities</title>
+    <link rel="stylesheet" href="./assets/app.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Coupon &amp; QR Generation Console</h1>
+      <p class="subtitle">
+        Kelola kode unik, QR code, dan proses penempelan gambar melalui antarmuka
+        interaktif ini.
+      </p>
+    </header>
+
+    <div class="toolbar">
+      <button type="button" id="refreshProjectStatus" class="btn secondary">
+        Refresh Status Project
+      </button>
+    </div>
+
+    <main class="layout">
+      <section class="card" id="coupon-generator">
+        <h2>Generate Kode Unik</h2>
+        <form id="couponForm" class="form-grid">
+          <label>
+            Project
+            <input type="text" id="project" required placeholder="BAT" />
+          </label>
+          <label>
+            Prefix
+            <input type="text" id="prefix" placeholder="BAT" />
+          </label>
+          <label>
+            Postfix
+            <input type="text" id="postfix" placeholder="2025" />
+          </label>
+          <label>
+            Panjang Total
+            <input
+              type="number"
+              id="lengths"
+              min="4"
+              max="12"
+              required
+              value="8"
+            />
+          </label>
+          <label>
+            Jumlah Kode
+            <input
+              type="number"
+              id="count"
+              min="1"
+              step="1"
+              required
+              value="1000"
+            />
+          </label>
+          <label>
+            Custom Charset (opsional)
+            <input
+              type="text"
+              id="char"
+              placeholder="123456789ABCDEFGHJKMNPQRSTUVWXYZ"
+            />
+          </label>
+          <fieldset class="fieldset">
+            <legend>Tipe Karakter</legend>
+            <label><input type="radio" name="type" value="alphanumeric" checked /> Alphanumeric</label>
+            <label><input type="radio" name="type" value="alpha" /> Alpha</label>
+            <label><input type="radio" name="type" value="numeric" /> Numeric</label>
+          </fieldset>
+          <div class="form-actions">
+            <button type="submit" class="btn primary">Generate</button>
+            <button type="button" id="refreshCouponList" class="btn">
+              Refresh List
+            </button>
+            <button type="button" id="downloadCouponZip" class="btn secondary">
+              Download ZIP
+            </button>
+          </div>
+        </form>
+
+        <div class="results">
+          <h3>File CSV Tersedia</h3>
+          <ul id="couponFiles" class="list"></ul>
+          <div class="history-block">
+            <h4>Riwayat Project Coupon</h4>
+            <ul id="couponHistory" class="list history-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="qr-generator">
+        <h2>Generate QR Code Bulk</h2>
+        <form id="qrForm" class="form-grid">
+          <label class="wide">
+            Project (belum memiliki QR)
+            <select id="qrProjectSelect">
+              <option value="">Pilih project...</option>
+            </select>
+          </label>
+          <label>
+            Path CSV Coupon
+            <input
+              type="text"
+              id="couponsPath"
+              placeholder="/public/coupons/csv/BAT"
+              required
+              readonly
+            />
+          </label>
+          <label>
+            Path Output QR
+            <input
+              type="text"
+              id="generatePath"
+              placeholder="/public/coupons/qr/BAT"
+              required
+              readonly
+            />
+          </label>
+          <label>
+            Path Icon (opsional)
+            <input type="text" id="iconPath" placeholder="assets/icon.png" />
+          </label>
+          <label>
+            Warna Gradien (Awal)
+            <input type="color" id="colorStart" value="#000000" />
+          </label>
+          <label>
+            Warna Gradien (Akhir)
+            <input type="color" id="colorEnd" value="#ff0000" />
+          </label>
+          <label>
+            Style
+            <select id="style">
+              <option value="classic">Classic</option>
+              <option value="rounded">Rounded</option>
+              <option value="wave">Wave</option>
+              <option value="stain">Stain</option>
+              <option value="batik">Batik</option>
+              <option value="diamond">Diamond</option>
+              <option value="fluid">Fluid</option>
+            </select>
+          </label>
+          <label class="wide">
+            Preview Content
+            <input type="text" id="previewContent" placeholder="SAMPLECODE123" />
+          </label>
+          <div class="form-actions">
+            <button type="button" id="previewQrBtn" class="btn">
+              Preview QR
+            </button>
+            <button type="button" id="generateQrBtn" class="btn primary">
+              Generate Bulk
+            </button>
+            <button type="button" id="listQrOutputBtn" class="btn">
+              List Output
+            </button>
+            <button type="button" id="downloadQrZipBtn" class="btn secondary">
+              Download ZIP
+            </button>
+          </div>
+        </form>
+
+        <div class="preview-block">
+          <h3>QR Preview</h3>
+          <img id="qrPreviewImage" alt="QR Preview" class="preview-image" />
+        </div>
+
+        <div class="results">
+          <h3>Output Directory</h3>
+          <div class="columns">
+            <div>
+              <h4>Folders</h4>
+              <ul id="qrFolders" class="list"></ul>
+            </div>
+            <div>
+              <h4>Files</h4>
+              <ul id="qrFiles" class="list"></ul>
+            </div>
+          </div>
+          <div class="history-block">
+            <h4>Riwayat Project QR</h4>
+            <ul id="qrHistory" class="list history-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="post-process">
+        <h2>Post-Process QR ke Background</h2>
+        <div class="interactive-grid">
+          <form id="mergeForm" class="form-grid">
+            <label class="wide">
+              Project (belum post-process)
+              <select id="postProcessProjectSelect">
+                <option value="">Pilih project...</option>
+              </select>
+            </label>
+            <label>
+              Project Path (untuk bulk)
+              <input
+                type="text"
+                id="projectPath"
+                placeholder="/public/coupons/projects/BAT/"
+                required
+              />
+            </label>
+            <label>
+              Background Path
+              <input
+                type="text"
+                id="backgroundPath"
+                placeholder="/public/assets/backgrounds/sample.png"
+                required
+              />
+            </label>
+            <label>
+              QR Source Path
+              <input
+                type="text"
+                id="qrSourcePath"
+                placeholder="/public/coupons/qr/BAT"
+                required
+                readonly
+              />
+            </label>
+            <label>
+              Target Save Path
+              <input
+                type="text"
+                id="qrTargetPath"
+                placeholder="/public/coupons/post-process/BAT"
+                required
+                readonly
+              />
+            </label>
+            <label>
+              Overlay Width
+              <input type="number" id="overlayWidth" value="200" />
+            </label>
+            <label>
+              Overlay Height
+              <input type="number" id="overlayHeight" value="200" />
+            </label>
+            <label>
+              Overlay X
+              <input type="number" id="overlayX" value="50" />
+            </label>
+            <label>
+              Overlay Y
+              <input type="number" id="overlayY" value="50" />
+            </label>
+            <label>
+              Overlay Top Radius
+              <input type="number" id="overlayRadius" value="0" />
+            </label>
+            <label>
+              Text Value
+              <input type="text" id="textValue" value="SAMPLE" />
+            </label>
+            <label>
+              Text Size
+              <input type="number" id="textSize" value="24" />
+            </label>
+            <label>
+              Text X
+              <input type="number" id="textX" value="100" />
+            </label>
+            <label>
+              Text Y
+              <input type="number" id="textY" value="100" />
+            </label>
+            <label>
+              Text Color
+              <input type="color" id="textColor" value="#ffffff" />
+            </label>
+            <label>
+              Font Family
+              <input type="text" id="textFont" value="Arial" />
+            </label>
+            <div class="form-actions">
+              <button type="button" id="loadBackgroundBtn" class="btn">
+                Load Background
+              </button>
+              <button type="button" id="mergePreviewBtn" class="btn">
+                Preview Merge
+              </button>
+              <button type="button" id="postProcessBulkBtn" class="btn primary">
+                Generate Bulk Merge
+              </button>
+            </div>
+          </form>
+
+          <div class="interactive-preview">
+            <h3>Penempatan Overlay</h3>
+            <div class="canvas-wrapper" id="canvasWrapper">
+              <img id="backgroundPreview" alt="Background Preview" />
+              <div id="qrOverlay" class="overlay" tabindex="0">
+                <img id="qrOverlayImage" alt="QR Overlay" />
+                <span id="qrOverlayLabel"></span>
+                <div class="resize-handle" id="resizeHandle"></div>
+              </div>
+              <span id="textPreview" class="text-preview">SAMPLE</span>
+            </div>
+            <p class="hint">
+              Drag kotak QR untuk menggeser posisi, gunakan handle di sudut kanan
+              bawah untuk mengubah ukuran. Nilai koordinat otomatis diperbarui ke
+              formulir.
+            </p>
+            <div class="preview-block">
+              <h4>Merge Preview</h4>
+              <img id="mergePreviewImage" class="preview-image" alt="Merge Preview" />
+            </div>
+            <div class="history-block">
+              <h4>Riwayat Project Post-Process</h4>
+              <ul id="postHistory" class="list history-list"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <small>
+        Dibangun untuk mempercepat proses generate kode &amp; QR di lingkungan
+        internal. Gunakan dengan bijak.
+      </small>
+    </footer>
+
+    <script src="./assets/app.js" type="module"></script>
+  </body>
+</html>

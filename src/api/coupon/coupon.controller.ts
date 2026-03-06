@@ -7,8 +7,13 @@ import {
   Post,
   Query,
   Res,
+  UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { path as appRoot } from 'app-root-path';
 import {
   compareCsvAndQrDTO,
   GenerateBulkQr,
@@ -23,11 +28,16 @@ import {
   DownloadPostProcessDTO,
 } from './coupon.dto';
 import { CouponService } from './coupon.service';
+import { CouponGateway } from './coupon.gateway';
+import * as fs from 'node:fs';
 
 @Controller('api/coupon')
 @UseInterceptors(TransformInterceptor)
 export class CouponController {
-  constructor(private couponService: CouponService) {}
+  constructor(
+    private couponService: CouponService,
+    private couponGateway: CouponGateway,
+  ) {}
 
   @Post('/generate')
   generate(@Body() params: generateCouponDTO) {
@@ -125,5 +135,96 @@ export class CouponController {
   @Post('/bulk-qr')
   generateBulkQr(@Body() param: GenerateBulkQr) {
     return this.couponService.generateBulkQr(param);
+  }
+
+  // ─── File Upload ──────────────────────────────────────────
+
+  @Post('/upload/logo')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(appRoot, 'public', 'assets', 'logos');
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e4);
+          cb(null, `${unique}${extname(file.originalname)}`);
+        },
+      }),
+    }),
+  )
+  uploadLogo(@UploadedFile() file: Express.Multer.File) {
+    return {
+      filename: file.filename,
+      path: `/assets/logos/${file.filename}`,
+      fullPath: `public/assets/logos/${file.filename}`,
+    };
+  }
+
+  @Post('/upload/background')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = join(appRoot, 'public', 'assets', 'backgrounds');
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e4);
+          cb(null, `${unique}${extname(file.originalname)}`);
+        },
+      }),
+    }),
+  )
+  uploadBackground(@UploadedFile() file: Express.Multer.File) {
+    return {
+      filename: file.filename,
+      path: `/assets/backgrounds/${file.filename}`,
+      fullPath: `public/assets/backgrounds/${file.filename}`,
+    };
+  }
+
+  // ─── Folder Listing ──────────────────────────────────────
+
+  @Get('/folders/csv')
+  async listCsvFolders() {
+    return this.couponService.listCsvFolders();
+  }
+
+  @Get('/folders/qr')
+  async listQrFolders() {
+    return this.couponService.listQrFolders();
+  }
+
+  /** Get first coupon code from the first CSV file in a folder */
+  @Get('/csv/sample')
+  async getCsvSample(@Query('folder') folder: string) {
+    return this.couponService.getCsvSampleLine(folder);
+  }
+
+  /** Get first QR image path from a QR folder */
+  @Get('/qr/sample')
+  async getQrSample(@Query('folder') folder: string) {
+    return this.couponService.getQrSampleFile(folder);
+  }
+
+  @Get('/files/logos')
+  async listLogos() {
+    return this.couponService.listUploadedFiles('logos');
+  }
+
+  @Get('/files/backgrounds')
+  async listBackgrounds() {
+    return this.couponService.listUploadedFiles('backgrounds');
+  }
+
+  // ─── Active Jobs ──────────────────────────────────────────
+
+  @Get('/jobs/active')
+  getActiveJobs() {
+    return this.couponGateway.getActiveJobs();
   }
 }

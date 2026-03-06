@@ -141,20 +141,101 @@ export class SplitCsvAndQrDTO {
   numberOfSplit: number[];
 }
 
+export class QrGradientStopDTO {
+  @ApiProperty()
+  offset: number;
+  @ApiProperty()
+  color: string;
+}
+
+export class QrGradientDTO {
+  @ApiProperty({ enum: ['linear', 'radial'] })
+  type: 'linear' | 'radial';
+  @ApiPropertyOptional()
+  rotation?: number;
+  @ApiProperty({ type: [QrGradientStopDTO] })
+  colorStops: QrGradientStopDTO[];
+}
+
+export class QrStylingOptionsDTO {
+  @ApiPropertyOptional({ default: 300 })
+  width?: number;
+  @ApiPropertyOptional({ default: 300 })
+  height?: number;
+  @ApiPropertyOptional({ default: 10 })
+  margin?: number;
+  @ApiPropertyOptional({
+    enum: [
+      'dots',
+      'rounded',
+      'classy',
+      'classy-rounded',
+      'square',
+      'extra-rounded',
+    ],
+    default: 'square',
+  })
+  dotsType?: string;
+  @ApiPropertyOptional({ default: '#000000' })
+  dotsColor?: string;
+  @ApiPropertyOptional({ type: QrGradientDTO })
+  dotsGradient?: QrGradientDTO;
+  @ApiPropertyOptional({
+    enum: [
+      'dot',
+      'square',
+      'extra-rounded',
+      'dots',
+      'rounded',
+      'classy',
+      'classy-rounded',
+    ],
+  })
+  cornersSquareType?: string;
+  @ApiPropertyOptional()
+  cornersSquareColor?: string;
+  @ApiPropertyOptional({ type: QrGradientDTO })
+  cornersSquareGradient?: QrGradientDTO;
+  @ApiPropertyOptional({
+    enum: [
+      'dot',
+      'square',
+      'dots',
+      'rounded',
+      'classy',
+      'classy-rounded',
+      'extra-rounded',
+    ],
+  })
+  cornersDotType?: string;
+  @ApiPropertyOptional()
+  cornersDotColor?: string;
+  @ApiPropertyOptional({ type: QrGradientDTO })
+  cornersDotGradient?: QrGradientDTO;
+  @ApiPropertyOptional({ default: '#ffffff' })
+  backgroundColor?: string;
+  @ApiPropertyOptional({ type: QrGradientDTO })
+  backgroundGradient?: QrGradientDTO;
+  @ApiPropertyOptional({ enum: ['square', 'circle'], default: 'square' })
+  shape?: 'square' | 'circle';
+  @ApiPropertyOptional({ enum: ['L', 'M', 'Q', 'H'], default: 'H' })
+  errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
+  @ApiPropertyOptional({ description: 'Logo image path on server' })
+  imagePath?: string;
+  @ApiPropertyOptional({ default: 0.4, description: '0.1 - 0.5' })
+  imageSize?: number;
+}
+
 export class GenerateQrDTO {
   content: string;
-  colorRange: [string, string];
   filename: string;
-  icon: string;
   pathFile: string;
-  style:
-    | 'classic'
-    | 'rounded'
-    | 'wave'
-    | 'stain'
-    | 'batik'
-    | 'diamond'
-    | 'fluid';
+  parentJobId?: string | number;
+  qrOptions?: QrStylingOptionsDTO;
+  // Legacy fields (backward compat)
+  colorRange?: [string, string];
+  icon?: string;
+  style?: string;
 }
 
 export class GenerateBulkQr {
@@ -162,45 +243,26 @@ export class GenerateBulkQr {
   couponsPath: string;
   @ApiProperty()
   generatePath: string;
-  @ApiProperty()
-  iconPath: string;
-  @ApiProperty()
-  colorRange: [string, string];
-  @ApiProperty()
-  style:
-    | 'classic'
-    | 'rounded'
-    | 'wave'
-    | 'stain'
-    | 'batik'
-    | 'diamond'
-    | 'fluid';
+  @ApiPropertyOptional()
+  iconPath?: string;
+  @ApiPropertyOptional()
+  colorRange?: [string, string];
+  @ApiPropertyOptional()
+  style?: string;
+  @ApiPropertyOptional({ type: QrStylingOptionsDTO })
+  qrOptions?: QrStylingOptionsDTO;
 }
 
 export class QrPreviewDTO {
   @ApiProperty()
   content: string;
-  @ApiProperty({
-    enum: {
-      classic: 'classic',
-      rounded: 'rounded',
-      wave: 'wave',
-      stain: 'stain',
-      batik: 'batik',
-      diamond: 'diamond',
-      fluid: 'fluid',
-    },
-  })
-  style:
-    | 'classic'
-    | 'rounded'
-    | 'wave'
-    | 'stain'
-    | 'batik'
-    | 'diamond'
-    | 'fluid';
-  @ApiProperty({ type: [String], description: '[startColor, endColor]' })
-  colorRange: [string, string];
+  @ApiPropertyOptional({ type: QrStylingOptionsDTO })
+  qrOptions?: QrStylingOptionsDTO;
+  // Legacy fields
+  @ApiPropertyOptional()
+  style?: string;
+  @ApiPropertyOptional({ type: [String] })
+  colorRange?: [string, string];
   @ApiPropertyOptional()
   iconPath?: string;
 }

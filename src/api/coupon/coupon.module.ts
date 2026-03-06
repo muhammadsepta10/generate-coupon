@@ -12,6 +12,7 @@ import {
   PostProcessQr,
 } from './coupon.process';
 import { CouponService } from './coupon.service';
+import { CouponGateway } from './coupon.gateway';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { CouponService } from './coupon.service';
   controllers: [CouponController],
   providers: [
     CouponService,
+    CouponGateway,
     CouponProcess,
     CouponProcess2,
     BulkQr,

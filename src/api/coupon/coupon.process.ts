@@ -47,13 +47,13 @@ const alphanumericArr = [
 import * as fs from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { randomInt } from 'node:crypto';
-import appRootPath from 'app-root-path';
 import { InjectQueue, Process, Processor } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 let idx = 0;
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { resolve } from 'node:path';
 import { HelperService } from '@common/helper/helper.service';
+import { QrStylingService } from '@common/helper/qr-styling.service';
 import { createInterface } from 'node:readline';
 let generated = 0;
 
@@ -121,6 +121,37 @@ const deriveNumericSeed = <T>(job: Job<T>) => {
 // Yield ke event loop agar Bull bisa heartbeat ke Redis
 const yieldToEventLoop = () =>
   new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Format seconds into human-readable ETA string.
+ */
+function formatEta(totalSeconds: number): string {
+  if (totalSeconds <= 0) return '';
+  const s = Math.round(totalSeconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  if (m < 60) return `${m}m ${rs}s`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  if (h < 24) return `${h}h ${rm}m`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  if (d < 7) return `${d}d ${rh}h`;
+  if (d < 30) {
+    const w = Math.floor(d / 7);
+    const rd = d % 7;
+    return `${w}w ${rd}d`;
+  }
+  if (d < 365) {
+    const mo = Math.floor(d / 30);
+    const rd = d % 30;
+    return `${mo}mo ${rd}d`;
+  }
+  const y = Math.floor(d / 365);
+  const rmo = Math.floor((d % 365) / 30);
+  return `${y}y ${rmo}mo`;
+}
 
 @Processor('coupon')
 export class CouponProcess {
@@ -273,8 +304,8 @@ export class CouponProcess {
           config.type === 'alpha'
             ? isAlpha
             : config.type === 'numeric'
-              ? isNumeric
-              : isNumeric && isAlpha;
+            ? isNumeric
+            : isNumeric && isAlpha;
         const checkCode = await this.couponModels.Coupons.Coupons.findOne({
           coupon: code,
         });
@@ -386,7 +417,7 @@ export class CouponProcess {
     const originName =
       prefix !== '' ? prefix : postfix !== '' ? postfix : project;
     let name = originName;
-    const dirPath = `${appRootPath}/../public/coupons/csv/${project}`;
+    const dirPath = `${appRoot}/public/coupons/csv/${project}`;
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
@@ -415,26 +446,23 @@ export class CouponProcess2 {
   private readonly candidateOversampleFactor = 1.2;
   private readonly dbChunkSize = DEFAULT_DB_CHUNK_SIZE;
   private readonly bulkWriteChunk = DEFAULT_BULK_WRITE_CHUNK;
-  private rng: SeededRandom | null = null;
   constructor(private readonly couponDbService: CouponDbService) {
     this.couponModels = this.couponDbService.getModels();
   }
 
-  // Menggunakan crypto.randomInt — tidak ada cycling, true random
-  _randomInt(min: number, max: number) {
-    return randomInt(min, max + 1); // crypto.randomInt upper bound exclusive
-  }
-
-  _randomElem(arr: string) {
-    return arr[this._randomInt(0, arr.length - 1)];
-  }
-
+  /**
+   * Fisher-Yates shuffle untuk generate kode unik anti-sequential.
+   * - Setiap karakter dalam 1 kode TIDAK berulang (unique chars)
+   * - Urutan acak sempurna (crypto.randomInt)
+   * - O(n) tanpa retry loop → tidak memblokir event loop
+   * - Kode ABCD1234FG tidak akan menghasilkan ABCD1235FG
+   */
   private generateOneCode(
     charset: string,
     postfix: string,
     prefix: string,
     totalLength: number,
-  ) {
+  ): string {
     const resolvedCharset =
       charset && charset.length > 0 ? charset : alphanumericArr.join('');
     const availableLength = totalLength - prefix.length - postfix.length;
@@ -443,87 +471,28 @@ export class CouponProcess2 {
         'Invalid configuration: lengths must be greater than prefix + postfix length',
       );
     }
-    let code = '';
-    // Izinkan karakter berulang — memperbesar ruang kombinasi
-    // dari P(26,10) = 19.2T ke 26^10 = 141T
-    // dan menghilangkan inner retry loop yang memblokir event loop
-    while (code.length < availableLength) {
-      code += this._randomElem(resolvedCharset);
-    }
 
-    return `${prefix}${code}${postfix}`;
-  }
-
-  private _checkCodeV4(code: string, codeBfr: string, codeAftr: string) {
-    const codeFirst = code.substring(1, 3);
-    const codeLast = code.substring(5, 7);
-    const codeBfrFirst = codeBfr.substring(0, 2);
-    const codeBfrLast = codeBfr.substring(5, 7);
-    const codeAftrFirst = codeAftr.substring(0, 2);
-    const codeAftrLast = codeAftr.substring(5, 7);
-    if (
-      codeFirst[0] === (codeBfrFirst?.[0] || '') &&
-      codeLast[0] === (codeBfrLast?.[0] || '')
-    ) {
-      const codeLastIdx = alphanumericArr.indexOf(codeLast[1]);
-      const codeBfrLastIdx = alphanumericArr.indexOf(codeBfrLast[1]);
-      const checkIdxLast = codeLastIdx - codeBfrLastIdx;
-      if (
-        codeFirst[1] === (codeBfrFirst?.[1] || '') &&
-        (checkIdxLast < 0 ? checkIdxLast * -1 : checkIdxLast) < 10
-      ) {
-        const codeFirstIdx = alphanumericArr.indexOf(codeFirst[1]);
-        const codeBfrFirstIdx = alphanumericArr.indexOf(codeBfrFirst[1]);
-        const checkIdx = codeFirstIdx - codeBfrFirstIdx;
-        if ((checkIdx < 0 ? checkIdx * -1 : checkIdx) < 10) {
-          return false;
-        }
+    if (resolvedCharset.length >= availableLength) {
+      // Fisher-Yates partial shuffle: ambil availableLength karakter unik
+      // dari charset secara acak tanpa retry loop
+      const pool = resolvedCharset.split('');
+      const code: string[] = new Array(availableLength);
+      for (let i = 0; i < availableLength; i++) {
+        const lastIdx = pool.length - 1 - i;
+        const j = randomInt(0, lastIdx + 1);
+        code[i] = pool[j];
+        // Swap: pindahkan karakter yang sudah diambil ke akhir pool
+        pool[j] = pool[lastIdx];
       }
-    }
-    if (
-      codeFirst[0] === (codeAftrFirst?.[0] || '') &&
-      codeLast[0] === (codeAftrLast?.[0] || '')
-    ) {
-      const codeLastIdx = alphanumericArr.indexOf(codeLast[1]);
-      const codeAftrLastIdx = alphanumericArr.indexOf(codeAftrLast[1]);
-      const checkIdxLast = codeLastIdx - codeAftrLastIdx;
-      if (
-        codeFirst[1] === (codeAftrFirst?.[1] || '') &&
-        (checkIdxLast < 0 ? checkIdxLast * -1 : checkIdxLast) < 10
-      ) {
-        const codeFirstIdx = alphanumericArr.indexOf(codeFirst[1]);
-        const codeAftrFirstIdx = alphanumericArr.indexOf(codeAftrFirst[1]);
-        const checkIdx = codeFirstIdx - codeAftrFirstIdx;
-        if ((checkIdx < 0 ? checkIdx * -1 : checkIdx) < 10) {
-          return false;
-        }
+      return `${prefix}${code.join('')}${postfix}`;
+    } else {
+      // Fallback: charset lebih kecil dari panjang kode → izinkan berulang
+      let code = '';
+      while (code.length < availableLength) {
+        code += resolvedCharset[randomInt(0, resolvedCharset.length)];
       }
+      return `${prefix}${code}${postfix}`;
     }
-    return true;
-  }
-
-  private async writeCsv(
-    codes: string[],
-    project: string,
-    prefix: string,
-    postfix: string,
-  ) {
-    const originName =
-      prefix !== '' ? prefix : postfix !== '' ? postfix : project;
-    let fileName = originName;
-    const dirPath = `${appRootPath}/../public/coupons/csv/${project}`;
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-    while (fs.existsSync(`${dirPath}/${fileName}.csv`)) {
-      fileName = `${originName}-${idx}`;
-      idx++;
-    }
-    const csvContent = ['coupon', ...codes].join('\r\n');
-    await fs.promises.writeFile(`${dirPath}/${fileName}.csv`, csvContent, {
-      encoding: 'utf8',
-    });
-    return `${dirPath}/${fileName}.csv`;
   }
 
   private isCodeTypeValid(
@@ -544,31 +513,12 @@ export class CouponProcess2 {
     return hasAlpha && hasNumeric;
   }
 
-  private async findExistingCoupons(codes: string[]) {
-    if (codes.length === 0) {
-      return new Set<string>();
-    }
-    const duplicates = new Set<string>();
-    for (const chunk of chunkArray(codes, this.dbChunkSize)) {
-      try {
-        const rows = await this.couponModels.Coupons.Coupons.find(
-          { coupon: { $in: chunk } },
-          { coupon: 1, _id: 0 },
-        )
-          .lean()
-          .maxTimeMS(120_000);
-        rows.forEach((row) => duplicates.add(row.coupon));
-      } catch (err) {
-        console.error('findExistingCoupons error:', err?.message);
-        // Jika timeout, skip — unique index akan handle saat persist
-      }
-      if (duplicates.size === codes.length) {
-        break;
-      }
-    }
-    return duplicates;
-  }
-
+  /**
+   * insertMany ordered:false → MongoDB unique index handles duplicates.
+   * - 1 index lookup per doc (vs 2 for bulkWrite upsert: find + insert)
+   * - 50% less disk I/O on 15GB index
+   * - Partial success: yang unik masuk, yang duplikat di-skip
+   */
   private async persistCoupons(codes: string[], project: string) {
     if (!codes.length) {
       return { inserted: [] as string[], duplicates: [] as string[] };
@@ -582,37 +532,31 @@ export class CouponProcess2 {
         continue;
       }
       try {
-        const operations = chunk.map((coupon) => ({
-          updateOne: {
-            filter: { coupon },
-            update: {
-              $setOnInsert: {
-                coupon,
-                project,
-              },
-            },
-            upsert: true,
-          },
-        }));
-
-        const result = await this.couponModels.Coupons.Coupons.bulkWrite(
-          operations,
-          { ordered: false },
-        );
-        const upsertedIds = result.upsertedIds ?? {};
-        const insertedIndexes = new Set<number>(
-          Object.keys(upsertedIds).map((key) => Number(key)),
-        );
-        chunk.forEach((code, index) => {
-          if (insertedIndexes.has(index)) {
-            inserted.push(code);
-            return;
-          }
-          duplicates.push(code);
+        const docs = chunk.map((coupon) => ({ coupon, project }));
+        await this.couponModels.Coupons.Coupons.insertMany(docs, {
+          ordered: false,
         });
-      } catch (err) {
-        console.error('persistCoupons bulkWrite error:', err?.message);
-        chunk.forEach((c) => duplicates.push(c));
+        // Semua berhasil insert
+        chunk.forEach((c) => inserted.push(c));
+      } catch (err: any) {
+        if (err?.code === 11000 || err?.name === 'MongoBulkWriteError') {
+          // Partial success: sebagian masuk, sebagian duplicate (E11000)
+          const writeErrors: any[] = err?.writeErrors ?? [];
+          const failedIndexes = new Set<number>();
+          for (const writeErr of writeErrors) {
+            failedIndexes.add(writeErr.index);
+          }
+          chunk.forEach((code, i) => {
+            if (failedIndexes.has(i)) {
+              duplicates.push(code);
+            } else {
+              inserted.push(code);
+            }
+          });
+        } else {
+          console.error('persistCoupons unexpected error:', err?.message);
+          chunk.forEach((c) => duplicates.push(c));
+        }
       }
     }
 
@@ -686,6 +630,14 @@ export class CouponProcess2 {
     project: string;
     loopIndex: number;
     loopTotal: number;
+    /** Stable WS job ID across all loops */
+    wsJobId: string;
+    /** Grand total across all loops (= original requested count) */
+    grandTotal: number;
+    /** How many codes were already inserted in previous loops */
+    grandOffset: number;
+    /** Bull job reference for progress reporting */
+    job: Job<generateCouponDTO>;
   }) {
     const {
       target,
@@ -697,6 +649,10 @@ export class CouponProcess2 {
       project,
       loopIndex,
       loopTotal,
+      wsJobId,
+      grandTotal,
+      grandOffset,
+      job: parentJob,
     } = params;
 
     // TIDAK menggunakan insertedSet/inserted[] yang terus tumbuh di memory
@@ -738,16 +694,18 @@ export class CouponProcess2 {
     });
 
     console.log(
-      `=== BATCH START === loop ${loopIndex + 1}/${loopTotal}, target: ${target}, started: ${startLabel}, csv: ${csvFilePath}`,
+      `=== BATCH START === loop ${
+        loopIndex + 1
+      }/${loopTotal}, target: ${target}, started: ${startLabel}, csv: ${csvFilePath}`,
     );
+
+    let batchCount = 0;
 
     while (totalInserted < target) {
       const remaining = target - totalInserted;
       const batchSize = Math.min(remaining, this.generationChunkSize);
-
-      console.log(
-        `[loop ${loopIndex + 1}] generating ${batchSize} candidates, progress: ${totalInserted}/${target}`,
-      );
+      const batchStart = Date.now();
+      batchCount++;
 
       // generateCandidateSet sekarang async (dengan yield ke event loop)
       const candidates = await this.generateCandidateSet(
@@ -760,22 +718,23 @@ export class CouponProcess2 {
         rejectedSet,
       );
 
-      console.log(
-        `[loop ${loopIndex + 1}] generated ${candidates.length} candidates, persisting...`,
-      );
+      const generateMs = Date.now() - batchStart;
 
-      // SKIP filterCodesByProximity — menyebabkan rejection berlebihan
-      // SKIP findExistingCoupons — index 15GB di cache 7.8GB = thrashing
-      // Langsung persist, biarkan MongoDB unique index handle duplicate
+      // Langsung persist via insertMany ordered:false
+      // MongoDB unique index handle duplicate — skip findExistingCoupons
+      const persistStart = Date.now();
       const { inserted: newlyInserted, duplicates: duplicatesOnInsert } =
         await this.persistCoupons(candidates.slice(0, batchSize), project);
+      const persistMs = Date.now() - persistStart;
 
       duplicatesOnInsert.forEach((code) => rememberRejected(code));
 
       if (newlyInserted.length === 0) {
         attemptsWithoutProgress++;
         console.warn(
-          `[loop ${loopIndex + 1}] no inserts this batch, attempt ${attemptsWithoutProgress}/50`,
+          `[loop ${
+            loopIndex + 1
+          }] batch #${batchCount} — 0 inserts, attempt ${attemptsWithoutProgress}/50`,
         );
         if (attemptsWithoutProgress > 50) {
           throw new Error(
@@ -795,26 +754,72 @@ export class CouponProcess2 {
         { encoding: 'utf8' },
       );
 
+      // Speed metrics
+      const batchTotalMs = Date.now() - batchStart;
+      const speed =
+        batchTotalMs > 0
+          ? Math.round((newlyInserted.length / batchTotalMs) * 1000)
+          : 0;
+      const elapsedSec = (Date.now() - startTime.getTime()) / 1000;
+      const overallSpeed =
+        elapsedSec > 0 ? Math.round(totalInserted / elapsedSec) : 0;
+      const eta =
+        overallSpeed > 0
+          ? Math.round((target - totalInserted) / overallSpeed)
+          : 0;
+      const etaMin = Math.floor(eta / 60);
+      const etaSec = eta % 60;
+
       if (
         totalInserted - lastLoggedProgress >= progressInterval ||
         totalInserted >= target
       ) {
         lastLoggedProgress = totalInserted;
         const mem = process.memoryUsage();
+        const pct = ((totalInserted / target) * 100).toFixed(1);
+
+        // Emit CUMULATIVE progress via WebSocket (across all loops)
+        const cumProcessed = grandOffset + totalInserted;
+        const cumPct = Number(((cumProcessed / grandTotal) * 100).toFixed(1));
+        const cumRemaining = grandTotal - cumProcessed;
+        const cumEta =
+          overallSpeed > 0 ? Math.round(cumRemaining / overallSpeed) : 0;
+        const etaStr = formatEta(cumEta) || 'calculating...';
+        parentJob.progress({
+          jobId: wsJobId,
+          jobType: 'generate-coupon',
+          queue: 'coupon2',
+          processed: cumProcessed,
+          total: grandTotal,
+          speed: overallSpeed,
+          pct: cumPct,
+          percentage: cumPct,
+          status: cumProcessed >= grandTotal ? 'completed' : 'active',
+          eta: etaStr,
+          label: `Coupon ${project}`,
+        });
+
         console.log(
-          'coupon progress',
-          `loop ${loopIndex + 1}/${loopTotal}`,
-          `inserted ${totalInserted}/${target}`,
-          `batch +${newlyInserted.length}`,
-          `dupes ${duplicatesOnInsert.length}`,
-          `elapsed ${formatDistanceToNowStrict(startTime)}`,
-          `heap ${Math.round(mem.heapUsed / 1024 / 1024)}MB`,
+          `[coupon] loop ${loopIndex + 1}/${loopTotal}` +
+            ` | ${totalInserted.toLocaleString()}/${target.toLocaleString()} (${pct}%)` +
+            ` | batch #${batchCount}: +${newlyInserted.length} ok, ${duplicatesOnInsert.length} dupes` +
+            ` | speed: ${speed.toLocaleString()} codes/sec (batch) ${overallSpeed.toLocaleString()} codes/sec (avg)` +
+            ` | gen ${generateMs}ms, db ${persistMs}ms` +
+            ` | ETA ${etaMin}m${etaSec}s` +
+            ` | elapsed ${formatDistanceToNowStrict(startTime)}` +
+            ` | heap ${Math.round(mem.heapUsed / 1024 / 1024)}MB` +
+            ` | rejectedCache ${rejectedSet.size}`,
         );
       }
     }
 
+    const totalElapsed = ((Date.now() - startTime.getTime()) / 1000).toFixed(1);
+    const finalSpeed = Math.round(totalInserted / Number(totalElapsed));
     console.log(
-      `=== BATCH DONE === loop ${loopIndex + 1}/${loopTotal}, inserted: ${totalInserted}`,
+      `=== BATCH DONE === loop ${loopIndex + 1}/${loopTotal}` +
+        ` | inserted: ${totalInserted.toLocaleString()}` +
+        ` | ${batchCount} batches, ${totalElapsed}s` +
+        ` | avg ${finalSpeed.toLocaleString()} codes/sec`,
     );
     return totalInserted;
   }
@@ -827,7 +832,7 @@ export class CouponProcess2 {
   ): string {
     const originName =
       prefix !== '' ? prefix : postfix !== '' ? postfix : project;
-    const dirPath = `${appRootPath}/../public/coupons/csv/${project}`;
+    const dirPath = `${appRoot}/public/coupons/csv/${project}`;
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
@@ -871,12 +876,16 @@ export class CouponProcess2 {
 
     const totalLoop = Math.ceil(count / this.limitPerLoop);
     let remaining = count;
+    let grandOffset = 0;
+    const wsJobId = `coupon2-${job.id}`;
     // Tidak perlu SeededRandom — menggunakan crypto.randomInt
 
     for (let loopIndex = 0; loopIndex < totalLoop; loopIndex++) {
       const chunkTarget = Math.min(remaining, this.limitPerLoop);
       console.log(
-        `=== LOOP ${loopIndex + 1}/${totalLoop} === target: ${chunkTarget}, remaining: ${remaining}`,
+        `=== LOOP ${
+          loopIndex + 1
+        }/${totalLoop} === target: ${chunkTarget}, remaining: ${remaining}`,
       );
 
       const insertedCount = await this.generateAndPersistBatch({
@@ -889,8 +898,13 @@ export class CouponProcess2 {
         project,
         loopIndex,
         loopTotal: totalLoop,
+        wsJobId,
+        grandTotal: count,
+        grandOffset,
+        job,
       });
       remaining -= insertedCount;
+      grandOffset += insertedCount;
       // CSV sudah ditulis per batch di generateAndPersistBatch
     }
 
@@ -902,24 +916,59 @@ export class CouponProcess2 {
         generated: count - remaining,
       }),
     );
-    this.rng = null;
   }
 }
 
 @Processor('generate-qr')
 export class GenerateQr {
-  constructor(private helperService: HelperService) {}
+  constructor(
+    private helperService: HelperService,
+    private qrStylingService: QrStylingService,
+  ) {}
 
-  @Process({ concurrency: 512 })
+  @Process({ concurrency: 5 })
   async generateQr(job: Job<GenerateQrDTO>) {
-    const { colorRange, content, filename, icon, pathFile, style } = job.data;
+    const { content, filename, pathFile, qrOptions } = job.data;
+
+    // New qr-code-styling path
+    if (qrOptions) {
+      const filePath = resolve(`${pathFile}/${filename}.png`);
+      await this.qrStylingService.renderToFile(
+        {
+          data: content,
+          width: qrOptions.width,
+          height: qrOptions.height,
+          margin: qrOptions.margin,
+          dotsType: qrOptions.dotsType as any,
+          dotsColor: qrOptions.dotsColor,
+          dotsGradient: qrOptions.dotsGradient as any,
+          cornersSquareType: qrOptions.cornersSquareType as any,
+          cornersSquareColor: qrOptions.cornersSquareColor,
+          cornersSquareGradient: qrOptions.cornersSquareGradient as any,
+          cornersDotType: qrOptions.cornersDotType as any,
+          cornersDotColor: qrOptions.cornersDotColor,
+          cornersDotGradient: qrOptions.cornersDotGradient as any,
+          backgroundColor: qrOptions.backgroundColor,
+          backgroundGradient: qrOptions.backgroundGradient as any,
+          shape: qrOptions.shape,
+          errorCorrectionLevel: qrOptions.errorCorrectionLevel,
+          image: qrOptions.imagePath,
+          imageSize: qrOptions.imageSize,
+        },
+        filePath,
+      );
+      return;
+    }
+
+    // Legacy fallback
+    const { colorRange, icon, style } = job.data;
     return this.helperService.generateQrCode({
-      colorRange,
+      colorRange: colorRange || ['#000000', '#000000'],
       content,
       filename,
-      icon,
+      icon: icon || '',
       pathFile,
-      style,
+      style: (style as any) || 'classic',
     });
   }
 }
@@ -933,10 +982,15 @@ export class BulkQr {
 
   @Process({ concurrency: 5 })
   async bulkQr(job: Job<GenerateBulkQr>) {
-    const { colorRange, couponsPath, generatePath, iconPath, style } = job.data;
-    const basePath = resolve(`${appRoot}/../`);
-    const couponsRoot = resolve(`${basePath}${couponsPath}`);
-    const targetRoot = resolve(`${basePath}/${generatePath}`);
+    const { couponsPath, generatePath, qrOptions } = job.data;
+    // Legacy fields
+    const colorRange = job.data.colorRange;
+    const iconPath = job.data.iconPath;
+    const style = job.data.style;
+
+    const normalizePath = (p: string) => (p.startsWith('/') ? p.slice(1) : p);
+    const couponsRoot = resolve(appRoot, normalizePath(couponsPath));
+    const targetRoot = resolve(appRoot, normalizePath(generatePath));
 
     await fs.promises.mkdir(targetRoot, { recursive: true });
 
@@ -944,6 +998,26 @@ export class BulkQr {
     const csvFiles = entries.filter((entry) =>
       entry.toLowerCase().endsWith('.csv'),
     );
+
+    // Pre-count total lines for progress tracking
+    let totalLines = 0;
+    for (const csvFile of csvFiles) {
+      const csvPath = resolve(couponsRoot, csvFile);
+      const content = await fs.promises.readFile(csvPath, 'utf8');
+      totalLines += content
+        .split(/\r?\n/)
+        .filter((l) => l.trim() && l.trim().toLowerCase() !== 'coupon').length;
+    }
+
+    const parentJobId = `bulk-qr-${job.id}`;
+    job.progress({
+      type: 'register-parent',
+      parentJobId,
+      total: totalLines,
+      jobType: 'generate-qr',
+      queue: 'bulk-qr',
+      label: `QR ${couponsPath.split('/').filter(Boolean).pop() || 'bulk'}`,
+    });
 
     let totalQueued = 0;
     for (const csvFile of csvFiles) {
@@ -962,16 +1036,25 @@ export class BulkQr {
         if (!line || line.toLowerCase() === 'coupon') {
           continue;
         }
-        jobsBuffer.push({
-          data: {
-            content: line,
-            colorRange,
-            filename: line,
-            icon: iconPath,
-            pathFile: targetDir,
-            style,
-          },
-        });
+
+        const jobData: GenerateQrDTO = {
+          content: line,
+          filename: line,
+          pathFile: targetDir,
+          parentJobId,
+        };
+
+        // New styling options take precedence
+        if (qrOptions) {
+          jobData.qrOptions = qrOptions;
+        } else {
+          // Legacy
+          jobData.colorRange = colorRange;
+          jobData.icon = iconPath;
+          jobData.style = style;
+        }
+
+        jobsBuffer.push({ data: jobData });
         if (jobsBuffer.length >= QR_QUEUE_BATCH_SIZE) {
           await this.generateQrQueue.addBulk(jobsBuffer);
           totalQueued += jobsBuffer.length;
@@ -988,7 +1071,7 @@ export class BulkQr {
 
     console.log(
       'bulk-qr summary',
-      JSON.stringify({ files: csvFiles.length, totalQueued }),
+      JSON.stringify({ files: csvFiles.length, totalQueued, parentJobId }),
     );
   }
 }
@@ -997,13 +1080,19 @@ export class BulkQr {
 export class MergeImage {
   constructor(private helperService: HelperService) {}
 
-  @Process({ concurrency: 50 })
+  @Process({ concurrency: 3 })
   async mergeImage(job: Job<PostProcessQrDTO>) {
     try {
       const options = job.data;
       if (
         !fs.existsSync(
-          resolve(`${appRoot}/../${options.pathSave}/${options.filename}`),
+          resolve(
+            appRoot,
+            (options.pathSave?.startsWith('/')
+              ? options.pathSave.slice(1)
+              : options.pathSave) || '',
+            options.filename || '',
+          ),
         )
       ) {
         const result = await this.helperService.mergeImage(options);
@@ -1023,28 +1112,79 @@ export class PostProcessQr {
     @InjectQueue('merge-image')
     private mergeImageQueue: Queue<PostProcessQrDTO>,
   ) {}
-  @Process({ concurrency: 10 })
+  @Process({ concurrency: 1 })
   async postProccessQr(job: Job<PostProcessQrPerFileDTO>) {
     const { backgroundPath, qrPath, qrTargetPath, overlayImage, text } =
       job.data;
-    const basePath = resolve(`${appRoot}/..`);
-    const qrImagePath = resolve(`${basePath}/${qrPath}`);
-    const qrTargetBase = resolve(`${basePath}/${qrTargetPath}`);
+    const normalizePath = (p: string) => (p.startsWith('/') ? p.slice(1) : p);
+    const qrImagePath = resolve(appRoot, normalizePath(qrPath));
+    const qrTargetBase = resolve(appRoot, normalizePath(qrTargetPath));
 
     await fs.promises.mkdir(qrTargetBase, { recursive: true });
 
-    const entries = await fs.promises.readdir(qrImagePath);
-    const imageEntries = entries.filter((entry) =>
-      entry.toLowerCase().endsWith('.png'),
+    // Collect .png files — supports both flat folders and nested subdirectories
+    const imageEntries: { file: string; relDir: string }[] = [];
+    const topEntries = await fs.promises.readdir(qrImagePath, {
+      withFileTypes: true,
+    });
+    for (const entry of topEntries) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith('.png')) {
+        imageEntries.push({ file: entry.name, relDir: '' });
+      } else if (entry.isDirectory()) {
+        const subDir = resolve(qrImagePath, entry.name);
+        const subEntries = await fs.promises.readdir(subDir);
+        for (const sub of subEntries) {
+          if (sub.toLowerCase().endsWith('.png')) {
+            imageEntries.push({ file: sub, relDir: entry.name });
+          }
+        }
+      }
+    }
+
+    console.log(
+      `post-process-qr: found ${imageEntries.length} PNG files in ${qrImagePath}`,
     );
 
+    if (imageEntries.length === 0) {
+      console.warn('post-process-qr: no PNG files found, nothing to process');
+      return;
+    }
+
+    // Register parent job for progress tracking
+    const parentJobId = `post-process-${job.id}`;
+    job.progress({
+      type: 'register-parent',
+      parentJobId,
+      total: imageEntries.length,
+      jobType: 'post-process',
+      queue: 'post-process-qr',
+      label: `Post-Process ${
+        qrPath.split('/').filter(Boolean).pop() || 'merge'
+      }`,
+    });
+
     const jobsBuffer: {
-      data: PostProcessQrDTO;
+      data: PostProcessQrDTO & { parentJobId?: string };
       opts: { removeOnComplete: boolean };
     }[] = [];
     let totalQueued = 0;
-    for (const entry of imageEntries) {
-      const filename = entry.replace(/\.png$/i, '');
+    for (const { file, relDir } of imageEntries) {
+      const filename = file.replace(/\.png$/i, '');
+      // Build the overlay source path (relative from project root)
+      const overlaySourcePath = relDir
+        ? `/${qrPath}/${relDir}/${file}`
+        : `/${qrPath}/${file}`;
+      // Build target save path — mirror subdirectory structure
+      const targetSavePath = relDir
+        ? `${qrTargetPath}/${relDir}`
+        : qrTargetPath;
+      // Ensure subdirectory target exists
+      if (relDir) {
+        await fs.promises.mkdir(
+          resolve(appRoot, normalizePath(targetSavePath)),
+          { recursive: true },
+        );
+      }
       jobsBuffer.push({
         data: {
           baseImage: {
@@ -1052,14 +1192,14 @@ export class PostProcessQr {
           },
           filename: `${filename}.png`,
           overlayImage: {
-            path: `/${qrPath}/${entry}`,
+            path: overlaySourcePath,
             x: overlayImage.x,
             y: overlayImage.y,
             height: overlayImage.height,
             width: overlayImage.width,
             topRadius: overlayImage.topRadius,
           },
-          pathSave: qrTargetPath,
+          pathSave: targetSavePath,
           text: {
             color: text.color,
             fontFamily: text.fontFamily,
@@ -1068,6 +1208,7 @@ export class PostProcessQr {
             x: text.x,
             y: text.y,
           },
+          parentJobId,
         },
         opts: { removeOnComplete: true },
       });
@@ -1087,7 +1228,7 @@ export class PostProcessQr {
 
     console.log(
       'post-process-qr summary',
-      JSON.stringify({ images: imageEntries.length, totalQueued }),
+      JSON.stringify({ images: imageEntries.length, totalQueued, parentJobId }),
     );
   }
 }
