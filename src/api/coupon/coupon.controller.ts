@@ -8,11 +8,12 @@ import {
   Query,
   Res,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname, join } from 'path';
+import { basename, extname, join } from 'path';
 import { path as appRoot } from 'app-root-path';
 import {
   compareCsvAndQrDTO,
@@ -26,17 +27,23 @@ import {
   ListQrOutputDTO,
   DownloadQrDTO,
   DownloadPostProcessDTO,
+  GenerateDownloadLinkDTO,
 } from './coupon.dto';
 import { CouponService } from './coupon.service';
 import { CouponGateway } from './coupon.gateway';
+import { DownloadTokenService } from './download-token.service';
+import { ApiKeyGuard } from '@common/guards/api-key.guard';
+import { Public } from '@common/decorators/public.decorator';
 import * as fs from 'node:fs';
 
 @Controller('api/coupon')
 @UseInterceptors(TransformInterceptor)
+@UseGuards(ApiKeyGuard)
 export class CouponController {
   constructor(
     private couponService: CouponService,
     private couponGateway: CouponGateway,
+    private downloadTokenService: DownloadTokenService,
   ) {}
 
   @Post('/generate')
@@ -137,6 +144,95 @@ export class CouponController {
     return this.couponService.generateBulkQr(param);
   }
 
+  // ─── Secure Download ────────────────────────────────────
+
+  @Post('/secure-download/generate-link')
+  async generateDownloadLink(@Body() param: GenerateDownloadLinkDTO) {
+    const result = await this.downloadTokenService.generateLink({
+      project: param.project,
+      fileType: param.fileType,
+      path: param.path,
+      zipName: param.zipName,
+      password: param.password,
+      expiresInHours: param.expiresInHours,
+    });
+    return {
+      downloadUrl: `/api/coupon/secure-download/${result.token}`,
+      downloadPageUrl: `/download.html?token=${encodeURIComponent(
+        result.token,
+      )}`,
+      token: result.token,
+      password: result.password,
+      expiresAt: new Date(result.expiresAt).toISOString(),
+    };
+  }
+
+  @Public()
+  @Get('/secure-download/:token/info')
+  async getTokenInfo(@Param('token') token: string) {
+    const info = await this.downloadTokenService.getTokenInfo(token);
+    return {
+      project: info.project,
+      fileType: info.fileType,
+      hasPassword: info.hasPassword,
+      expiresAt: new Date(info.expiresAt).toISOString(),
+    };
+  }
+
+  @Public()
+  @Get('/secure-download/:token/verify')
+  async verifyTokenPassword(
+    @Param('token') token: string,
+    @Query('password') password: string,
+  ) {
+    const valid = await this.downloadTokenService.verifyPassword(
+      token,
+      password,
+    );
+    if (!valid) {
+      return { valid: false, message: 'Password salah' };
+    }
+    return { valid: true };
+  }
+
+  @Public()
+  @Get('/secure-download/:token')
+  async secureDownload(
+    @Param('token') token: string,
+    @Query('password') password: string,
+    @Res() response,
+  ) {
+    const data = await this.downloadTokenService.verifyAndGetData(
+      token,
+      password,
+    );
+    let filePath: string;
+    switch (data.fileType) {
+      case 'csv':
+        filePath = await this.couponService.downloadAll(data.project);
+        break;
+      case 'qr':
+        filePath = await this.couponService.downloadGeneratedQr({
+          generatePath: data.path || `storage/qr/${data.project}`,
+          zipName: data.zipName,
+        });
+        break;
+      case 'post-process':
+        filePath = await this.couponService.downloadPostProcess({
+          path: data.path,
+          project: data.project,
+          zipName: data.zipName,
+        });
+        break;
+    }
+    const filename = data.zipName || `${data.project}.zip`;
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(filename)}"`,
+    );
+    response.sendFile(filePath);
+  }
+
   // ─── File Upload ──────────────────────────────────────────
 
   @Post('/upload/logo')
@@ -197,6 +293,11 @@ export class CouponController {
   @Get('/folders/qr')
   async listQrFolders() {
     return this.couponService.listQrFolders();
+  }
+
+  @Get('/folders/post-process')
+  async listPostProcessFolders() {
+    return this.couponService.listPostProcessFolders();
   }
 
   /** Get first coupon code from the first CSV file in a folder */

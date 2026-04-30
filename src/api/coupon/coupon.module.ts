@@ -13,11 +13,14 @@ import {
 } from './coupon.process';
 import { CouponService } from './coupon.service';
 import { CouponGateway } from './coupon.gateway';
+import { DownloadTokenService } from './download-token.service';
+import { AppConfigModule } from '@common/config/app-config/app-config.module';
 
 @Module({
   imports: [
     CouponDbModule,
     HelperModule,
+    AppConfigModule,
     BullModule.registerQueue({
       name: 'coupon',
     }),
@@ -41,6 +44,7 @@ import { CouponGateway } from './coupon.gateway';
   providers: [
     CouponService,
     CouponGateway,
+    DownloadTokenService,
     CouponProcess,
     CouponProcess2,
     BulkQr,

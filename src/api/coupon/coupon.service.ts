@@ -31,17 +31,11 @@ let csvFileNameCounter = 0;
 
 @Injectable()
 export class CouponService {
-  private readonly couponsBasePath = join(
-    projectRoot,
-    'public',
-    'coupons',
-    'csv',
-  );
-  private readonly qrBasePath = join(projectRoot, 'public', 'coupons', 'qr');
+  private readonly couponsBasePath = join(projectRoot, 'storage', 'csv');
+  private readonly qrBasePath = join(projectRoot, 'storage', 'qr');
   private readonly postProcessBasePath = join(
     projectRoot,
-    'public',
-    'coupons',
+    'storage',
     'post-process',
   );
   private couponModels: DBModel;
@@ -65,7 +59,12 @@ export class CouponService {
       throw new BadRequestException('Path is required');
     }
     const baseRoot = appRootPath.path || appRootPath.toString();
-    const normalized = target.startsWith('/') ? target.slice(1) : target;
+    let normalized = target.startsWith('/') ? target.slice(1) : target;
+    // Redirect legacy public/coupons/ paths to storage/
+    normalized = normalized
+      .replace(/^public\/coupons\/csv\//, 'storage/csv/')
+      .replace(/^public\/coupons\/qr\//, 'storage/qr/')
+      .replace(/^public\/coupons\/post-process\//, 'storage/post-process/');
     return resolve(baseRoot, normalized);
   }
 
@@ -137,12 +136,12 @@ export class CouponService {
   private toPublicPath(base: 'csv' | 'qr' | 'post', project: string) {
     switch (base) {
       case 'csv':
-        return `/public/coupons/csv/${project}`;
+        return `storage/csv/${project}`;
       case 'qr':
-        return `/public/coupons/qr/${project}`;
+        return `storage/qr/${project}`;
       case 'post':
       default:
-        return `/public/coupons/post-process/${project}`;
+        return `storage/post-process/${project}`;
     }
   }
 
@@ -764,6 +763,35 @@ export class CouponService {
       return {
         name,
         path: this.toPublicPath('qr', name),
+        fileCount,
+      };
+    });
+  }
+
+  async listPostProcessFolders() {
+    this.ensureDirectory(this.postProcessBasePath);
+    const folders = this.listDirectories(this.postProcessBasePath);
+    return folders.map((name) => {
+      const dirPath = join(this.postProcessBasePath, name);
+      let fileCount = 0;
+      try {
+        const entries = fs.readdirSync(dirPath);
+        for (const entry of entries) {
+          const entryPath = join(dirPath, entry);
+          if (fs.lstatSync(entryPath).isDirectory()) {
+            fileCount += fs
+              .readdirSync(entryPath)
+              .filter((f) => /\.(png|jpg|jpeg)$/i.test(f)).length;
+          } else if (/\.(png|jpg|jpeg)$/i.test(entry)) {
+            fileCount++;
+          }
+        }
+      } catch {
+        // directory not accessible
+      }
+      return {
+        name,
+        path: this.toPublicPath('post', name),
         fileCount,
       };
     });

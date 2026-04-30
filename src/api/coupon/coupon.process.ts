@@ -155,8 +155,8 @@ function formatEta(totalSeconds: number): string {
 
 @Processor('coupon')
 export class CouponProcess {
-  private couponModels: DBModel;
   private rng: SeededRandom | null = null;
+  private couponModels: DBModel;
   constructor(private readonly couponDbService: CouponDbService) {
     this.couponModels = this.couponDbService.getModels();
   }
@@ -306,9 +306,9 @@ export class CouponProcess {
             : config.type === 'numeric'
             ? isNumeric
             : isNumeric && isAlpha;
-        const checkCode = await this.couponModels.Coupons.Coupons.findOne({
-          coupon: code,
-        });
+        const checkCode = await this.couponModels.Coupons.Coupons.findById(
+          code,
+        ).lean();
         if (!checkCode && codes[code] === undefined && alphanumCheck) {
           // first[firstCode] ? first[firstCode] += 1 : first[firstCode] = 1
           // scnd[scndCode] ? scnd[scndCode] += 1 : scnd[scndCode] = 1
@@ -390,17 +390,22 @@ export class CouponProcess {
     let lastIdx = 0;
     const counInsert = 100000;
     for (let index = 0; index < arrCode.length / counInsert; index++) {
-      const sliceArr: { coupon: string; project: string }[] = arrCode
-        .slice(lastIdx, counInsert + lastIdx)
-        .map((v) => {
-          return { coupon: v, project: config.project };
-        });
       const sliceArrCoupon: string[] = arrCode
         .slice(lastIdx, counInsert + lastIdx)
         .map((v) => {
           return v;
         });
-      await this.couponModels.Coupons.Coupons.insertMany(sliceArr);
+      const docs = sliceArrCoupon.map((v) => ({
+        _id: v,
+        project: config.project,
+        prizeId: 0,
+        status: 1,
+      }));
+      await this.couponModels.Coupons.Coupons.insertMany(docs, {
+        ordered: false,
+      }).catch((err) => {
+        if (err?.code !== 11000 && !err?.writeErrors) throw err;
+      });
       await this._writeCsv(
         sliceArrCoupon,
         config.project,
@@ -417,7 +422,7 @@ export class CouponProcess {
     const originName =
       prefix !== '' ? prefix : postfix !== '' ? postfix : project;
     let name = originName;
-    const dirPath = `${appRoot}/public/coupons/csv/${project}`;
+    const dirPath = `${appRoot}/storage/csv/${project}`;
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
@@ -440,12 +445,12 @@ export class CouponProcess {
 
 @Processor('coupon2')
 export class CouponProcess2 {
-  private couponModels: DBModel;
   private readonly limitPerLoop = 500_000;
   private readonly generationChunkSize = 10_000;
   private readonly candidateOversampleFactor = 1.2;
   private readonly dbChunkSize = DEFAULT_DB_CHUNK_SIZE;
   private readonly bulkWriteChunk = DEFAULT_BULK_WRITE_CHUNK;
+  private couponModels: DBModel;
   constructor(private readonly couponDbService: CouponDbService) {
     this.couponModels = this.couponDbService.getModels();
   }
@@ -514,11 +519,11 @@ export class CouponProcess2 {
   }
 
   /**
-   * insertMany ordered:false → MongoDB unique index handles duplicates.
-   * - 1 index lookup per doc (vs 2 for bulkWrite upsert: find + insert)
-   * - 50% less disk I/O on 15GB index
-   * - Partial success: yang unik masuk, yang duplikat di-skip
+   * insertMany with ordered:false — MongoDB _id unique index handles duplicates.
+   * E11000 errors are caught and separated into inserted vs duplicates.
    */
+  // coupon.process.ts — di dalam class CouponProcess2
+
   private async persistCoupons(codes: string[], project: string) {
     if (!codes.length) {
       return { inserted: [] as string[], duplicates: [] as string[] };
@@ -528,34 +533,48 @@ export class CouponProcess2 {
     const duplicates: string[] = [];
 
     for (const chunk of chunkArray(codes, this.bulkWriteChunk)) {
-      if (!chunk.length) {
-        continue;
-      }
+      if (!chunk.length) continue;
+
+      const docs = chunk.map((c) => ({
+        _id: c,
+        project,
+        prizeId: 0,
+        status: 1,
+      }));
+
       try {
-        const docs = chunk.map((coupon) => ({ coupon, project }));
-        await this.couponModels.Coupons.Coupons.insertMany(docs, {
-          ordered: false,
-        });
-        // Semua berhasil insert
-        chunk.forEach((c) => inserted.push(c));
+        const result = await this.couponModels.Coupons.Coupons.insertMany(
+          docs,
+          { ordered: false },
+        );
+        inserted.push(...result.map((d: any) => d._id));
       } catch (err: any) {
-        if (err?.code === 11000 || err?.name === 'MongoBulkWriteError') {
-          // Partial success: sebagian masuk, sebagian duplicate (E11000)
-          const writeErrors: any[] = err?.writeErrors ?? [];
-          const failedIndexes = new Set<number>();
-          for (const writeErr of writeErrors) {
-            failedIndexes.add(writeErr.index);
+        if (err?.code === 11000 || err?.writeErrors) {
+          const failedIndexes = new Set(
+            (err.writeErrors || []).map((e: any) => e.index),
+          );
+
+          const expectedInserted = chunk.filter(
+            (_, idx) => !failedIndexes.has(idx),
+          );
+
+          // ✅ Sanity check pakai nInserted dari MongoDB
+          const nInserted =
+            err.result?.nInserted ?? err.result?.result?.nInserted ?? null;
+
+          if (nInserted !== null && expectedInserted.length !== nInserted) {
+            console.warn(
+              `[persistCoupons] nInserted mismatch: expected ${expectedInserted.length}, got ${nInserted} — chunk di-reject semua untuk retry`,
+            );
+            duplicates.push(...chunk);
+          } else {
+            inserted.push(...expectedInserted);
+            chunk
+              .filter((_, idx) => failedIndexes.has(idx))
+              .forEach((code) => duplicates.push(code));
           }
-          chunk.forEach((code, i) => {
-            if (failedIndexes.has(i)) {
-              duplicates.push(code);
-            } else {
-              inserted.push(code);
-            }
-          });
         } else {
-          console.error('persistCoupons unexpected error:', err?.message);
-          chunk.forEach((c) => duplicates.push(c));
+          throw err;
         }
       }
     }
@@ -832,7 +851,7 @@ export class CouponProcess2 {
   ): string {
     const originName =
       prefix !== '' ? prefix : postfix !== '' ? postfix : project;
-    const dirPath = `${appRoot}/public/coupons/csv/${project}`;
+    const dirPath = `${appRoot}/storage/csv/${project}`;
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }

@@ -287,3 +287,18 @@ export class DownloadPostProcessDTO {
   @ApiPropertyOptional()
   project?: string;
 }
+
+export class GenerateDownloadLinkDTO {
+  @ApiProperty()
+  project: string;
+  @ApiProperty({ enum: ['csv', 'qr', 'post-process'] })
+  fileType: 'csv' | 'qr' | 'post-process';
+  @ApiPropertyOptional()
+  path?: string;
+  @ApiPropertyOptional()
+  zipName?: string;
+  @ApiPropertyOptional()
+  password?: string;
+  @ApiPropertyOptional({ default: 24 })
+  expiresInHours?: number;
+}

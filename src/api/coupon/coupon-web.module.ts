@@ -5,6 +5,8 @@ import { Module } from '@nestjs/common';
 import { CouponController } from './coupon.controller';
 import { CouponService } from './coupon.service';
 import { CouponGateway } from './coupon.gateway';
+import { DownloadTokenService } from './download-token.service';
+import { AppConfigModule } from '@common/config/app-config/app-config.module';
 
 /**
  * Web-only module: controllers, service, WebSocket gateway.
@@ -14,6 +16,7 @@ import { CouponGateway } from './coupon.gateway';
   imports: [
     CouponDbModule,
     HelperModule,
+    AppConfigModule,
     BullModule.registerQueue(
       { name: 'coupon' },
       { name: 'coupon2' },
@@ -24,6 +27,6 @@ import { CouponGateway } from './coupon.gateway';
     ),
   ],
   controllers: [CouponController],
-  providers: [CouponService, CouponGateway],
+  providers: [CouponService, CouponGateway, DownloadTokenService],
 })
 export class CouponWebModule {}
