@@ -9,6 +9,7 @@ import { AppConfigModule } from '@common/config/app-config/app-config.module';
 import { CouponModule } from './api/coupon/coupon.module';
 import { BullModule } from '@nestjs/bull';
 import { UtilsModule } from './api/utils/utils.module';
+import { AuthModule } from './api/auth/auth.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { path as appRoot } from 'app-root-path';
 import { resolve } from 'path';
@@ -28,8 +29,12 @@ import { resolve } from 'path';
       },
     }),
     UtilsModule,
+    AuthModule,
     ServeStaticModule.forRoot({
       rootPath: resolve(`${appRoot}/public`),
+      serveStaticOptions: {
+        index: false,
+      },
     }),
   ],
   controllers: [AppController],

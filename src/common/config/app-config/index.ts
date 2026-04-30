@@ -23,4 +23,10 @@ export default registerAs('app', () => ({
   MAIL_PASS: process.env.MAIL_PASS,
   HP_WA: process.env.HP_WA,
   BASE_URL: process.env.BASE_URL,
+  ADMIN_USERNAME: process.env.ADMIN_USERNAME,
+  ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+  DOWNLOAD_TOKEN_SECRET: process.env.DOWNLOAD_TOKEN_SECRET,
+  API_KEY: process.env.API_KEY,
+  SESSION_SECRET: process.env.SESSION_SECRET,
+  BULL_MONITOR_PASSWORD: process.env.BULL_MONITOR_PASSWORD,
 }));

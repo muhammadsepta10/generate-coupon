@@ -74,4 +74,22 @@ export class AppConfigService {
   get BASE_URL(): string {
     return this.configService.get<string>('app.BASE_URL');
   }
+  get ADMIN_USERNAME(): string {
+    return this.configService.get<string>('app.ADMIN_USERNAME');
+  }
+  get ADMIN_PASSWORD(): string {
+    return this.configService.get<string>('app.ADMIN_PASSWORD');
+  }
+  get DOWNLOAD_TOKEN_SECRET(): string {
+    return this.configService.get<string>('app.DOWNLOAD_TOKEN_SECRET');
+  }
+  get API_KEY(): string {
+    return this.configService.get<string>('app.API_KEY');
+  }
+  get SESSION_SECRET(): string {
+    return this.configService.get<string>('app.SESSION_SECRET');
+  }
+  get BULL_MONITOR_PASSWORD(): string {
+    return this.configService.get<string>('app.BULL_MONITOR_PASSWORD');
+  }
 }

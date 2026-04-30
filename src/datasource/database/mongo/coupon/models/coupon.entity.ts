@@ -1,12 +1,12 @@
-import { Prop, raw, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, ObjectId, Schema as MongooseSchema } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
 
 export type CouponsDocument = Coupons & Document;
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, _id: false })
 export class Coupons {
-  @Prop({ required: true, unique: true })
-  coupon: string;
+  @Prop({ type: String, required: true })
+  _id: string;
 
   @Prop({ required: true, default: '' })
   project: string;

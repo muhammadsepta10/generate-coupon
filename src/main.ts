@@ -13,6 +13,8 @@ import transports from '@common/logs/transports.log';
 import { AppConfigService } from '@common/config/app-config/app-config.service';
 import { BullMonitorExpress } from '@bull-monitor/express';
 import { BullAdapter } from '@bull-monitor/root/dist/bull-adapter';
+import * as session from 'express-session';
+import * as basicAuth from 'express-basic-auth';
 
 /**
  * APP_ROLE controls process separation:
@@ -33,6 +35,61 @@ async function bootstrapWeb() {
   const app: NestApplication = await NestFactory.create(RootModule);
   const configService = app.get(AppConfigService);
   const port = configService.PORT;
+
+  // ─── Session Middleware ──────────────────────────────────
+  app.use(
+    session({
+      secret: configService.SESSION_SECRET || 'fallback-session-secret',
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        sameSite: 'lax',
+        maxAge: 8 * 60 * 60 * 1000, // 8 hours
+      },
+    }),
+  );
+
+  // ─── Block direct access to /coupons (legacy path) ──────
+  app.use('/coupons', (_req, res) => {
+    res
+      .status(403)
+      .json({ message: 'Access denied. Use secure download links.' });
+  });
+
+  // ─── Session Auth for Admin Pages ───────────────────────
+  app.use((req: any, res: any, next: any) => {
+    const path = req.path;
+
+    // Always allow these paths without session
+    if (
+      path === '/login.html' ||
+      path === '/download.html' ||
+      path.startsWith('/api/auth/') ||
+      path.startsWith('/api/') ||
+      path.startsWith('/socket.io') ||
+      path === '/favicon.ico' ||
+      path === '/assets/shared.css'
+    ) {
+      return next();
+    }
+
+    // For admin pages and static assets, require session
+    if (path === '/' || path.endsWith('.html') || path.startsWith('/assets/')) {
+      if (!(req.session as any)?.authenticated) {
+        // For HTML page requests, redirect to login
+        if (path === '/' || path.endsWith('.html')) {
+          return res.redirect('/login.html');
+        }
+        // For assets, return 403 (they'll load after login anyway)
+        return res.status(403).json({ message: 'Not authenticated' });
+      }
+    }
+
+    next();
+  });
+
+  // ─── Bull Monitor with Basic Auth ──────────────────────
   const adapters: BullAdapter[] = [];
   const queues = [
     'coupon',
@@ -58,7 +115,19 @@ async function bootstrapWeb() {
   });
   await monitor.init();
 
-  app.use(`/admin/queues`, monitor.router);
+  const bullMonitorPassword =
+    configService.BULL_MONITOR_PASSWORD || 'bullmon2026!';
+  const adminUsername = configService.ADMIN_USERNAME || 'admin';
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.use(
+    `/admin/queues`,
+    basicAuth({
+      users: { [adminUsername]: bullMonitorPassword },
+      challenge: true,
+      realm: 'Bull Monitor',
+    }),
+    monitor.router,
+  );
 
   const config = new DocumentBuilder()
     .addSecurity('authentication', {
